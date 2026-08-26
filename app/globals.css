@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Montserrat:wght@400;500;600;700&display=swap');
+
+:root {
+  --color-plum: #37263a;
+  --color-mauve: #735364;
+  --color-aqua: #acced1;
+  --color-cream: #efe7da;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: var(--color-plum);
+  font-family: 'Montserrat', sans-serif;
+}
+
+h1, h2, .font-serif {
+  font-family: 'Playfair Display', serif;
+}
+
+a {
+  color: inherit;
+}
+
+.hover-tooltip {
+  position: relative;
+}
+
+.hover-tooltip .hover-tooltip-bubble {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  z-index: 20;
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+  width: 280px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--color-plum);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  transition: opacity 0.1s ease 0.15s;
+}
+
+.hover-tooltip:hover .hover-tooltip-bubble {
+  visibility: visible;
+  opacity: 1;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+::view-transition-new(.nav-flyin) {
+  animation: navFlyIn 250ms ease-out;
+}
+
+@keyframes navFlyIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "museofseoul-dashboard",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "migrate": "node --env-file=.env.local migrate.js",
+    "test-db": "node --env-file=.env.local test-db.js",
+    "seed-rss": "node --env-file=.env.local seed-rss-sources.js",
+    "seed-reddit": "node --env-file=.env.local seed-reddit-sources.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^16.3.1",
+    "pg": "^8.13.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.2",
+    "typescript": "^5.7.2"
+  }
+}
