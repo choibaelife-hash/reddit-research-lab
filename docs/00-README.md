@@ -57,8 +57,3 @@ npm run dev            # http://localhost:3000/board
 ```
 
 `.env.local`의 `BOARD_PASSWORD`로 로그인한다. **없으면 잠금이 자동으로 꺼진다** — 배포 시 반드시 등록할 것.
-
-## 이전 문서
-
-`05-dashboard-master-spec.md` · `06-dashboard-ui-design.md` · `07-progress-log.md`는
-기존 museofseoul-dashboard에서 이월된 것으로, 이 프로젝트 범위와 다르다.
