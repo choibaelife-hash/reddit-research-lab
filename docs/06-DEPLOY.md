@@ -1,7 +1,13 @@
 # 배포 체크리스트
 
 **아직 배포하지 않았다.** 배포할 때 이 문서를 열고 순서대로 확인할 것.
-크론은 Vercel에 올라가야 실제로 도는 기능이라 **배포와 묶어서** 진행하기로 했다 (2026-08-26 결정).
+크론은 배포돼야 실제로 도는 기능이라 **배포와 묶어서** 진행하기로 했다 (2026-08-26 결정).
+
+> **배포처 (2026-08-27 갱신)**
+> 1단계(레딧·유튜브 수집)는 **Vercel**에서 그대로 간다.
+> 2단계(GPU 분석)를 붙일 때 **Railway(웹·큐워커) + RunPod(GPU)** 로 옮긴다.
+> 이유와 시점은 [saas/02-INFRA 4장](saas/02-INFRA.md) 참고.
+> 옮길 때 이 문서의 `vercel env` 명령과 `vercel.json` 크론은 Railway 방식으로 재작성해야 한다.
 
 ---
 
@@ -22,6 +28,7 @@
 | `OPENAI_API_KEY` | 분류·카드·댓글 엔티티 | LLM 단계 전부 실패 |
 | `APIFY_API_TOKEN` | **이제 안 씀** | 등록 불필요 (인스타 코드 삭제됨) |
 | **`BOARD_PASSWORD`** | **`/board` 접근 비밀번호** | **잠금이 꺼져 URL 아는 사람 누구나 봄** |
+| **`YOUTUBE_API_KEY`** | 영상분석 탭 — 유튜브 검색·조회수 | 영상 크론이 500. 다른 기능은 정상 |
 | `N8N_INGEST_SECRET` | 레거시 | 등록 불필요 |
 
 ```bash
@@ -29,6 +36,7 @@ vercel env add DATABASE_URL production
 vercel env add CRON_SECRET production
 vercel env add OPENAI_API_KEY production
 vercel env add BOARD_PASSWORD production   # ← 빼먹으면 공개됨
+vercel env add YOUTUBE_API_KEY production  # ← 영상분석 탭
 ```
 
 ## 3. 크론 — tick 상태 머신 ✅ 구현 완료 (`/api/cron/tick`)
