@@ -21,6 +21,7 @@
 |---|---|
 | [saas/01-PRD](saas/01-PRD.md) | 제품 경계 · 고객 JTBD · 버티컬 템플릿 · 공용 캐시 · **과금 정책** |
 | [saas/02-INFRA](saas/02-INFRA.md) | 자체 추론 손익분기 · vLLM/GPU 조달 · 배포 구조 · **학습 착수 순서** |
+| [saas/03-VIDEO](saas/03-VIDEO.md) | 영상분석 — **아웃라이어 선별** · 유튜브 할당량 · Whisper/Qwen3-VL · 실측 |
 
 ## 30초 요약
 
