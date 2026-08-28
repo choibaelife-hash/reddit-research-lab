@@ -1,7 +1,19 @@
--- docs/05-dashboard-master-spec.md §9.2 그대로. 스키마를 바꿀 땐 그 문서를 먼저 고치고 여기 반영할 것.
+-- 레딧 K-뷰티 소재 발굴 시스템 — 스키마 전체
+--
+-- 적용:  node --env-file=.env.local scripts/apply-schema.mjs
+--
+-- 이 파일 하나가 이 프로젝트의 전부다.
+-- 예전에는 schema.sql(museofseoul에서 복사) + migrate-analysis.js + migrate-reddit-rss.js
+-- 세 군데에 흩어져 있었고, schema.sql에는 이 프로젝트가 쓰지도 않는
+-- 인스타그램·제휴링크 테이블이 남아 있어 이걸로 새 환경을 세팅하면 앱이 뜨지 않았다.
+--
+-- 여러 번 실행해도 안전하다 (if not exists / on conflict).
 
--- ── 관측 축 ─────────────────────────────────────────
-create table keywords (
+-- ══════════════════════════════════════════════════════════
+-- 1. 수집 원본 — 재분석해도 여기는 건드리지 않는다
+-- ══════════════════════════════════════════════════════════
+
+create table if not exists keywords (
   id            uuid primary key default gen_random_uuid(),
   label         text not null,
   summary       text,
@@ -9,225 +21,170 @@ create table keywords (
   status        text not null default 'observing'
                 check (status in ('candidate','observing','archived')),
   first_seen_at timestamptz not null default now(),
-  promoted_at   timestamptz,          -- 사람이 승격한 시점
-  merged_into   uuid references keywords(id),  -- 병합된 경우 대표 키워드
-  created_by    text default 'auto',  -- auto | manual
+  promoted_at   timestamptz,
+  merged_into   uuid references keywords(id),
+  created_by    text default 'auto',
   updated_at    timestamptz not null default now()
 );
-create index on keywords (category, status);
 
--- 원본 언급 (1년 보관)
-create table mentions (
+create table if not exists mentions (
   id            uuid primary key default gen_random_uuid(),
   keyword_id    uuid not null references keywords(id) on delete cascade,
-  source        text not null check (source in ('reddit','rss','trends','gsc','instagram','oliveyoung','babitalk','klook','agoda','manual')),
-  external_id   text not null,        -- 레딧 post id, 기사 URL 등
+  source        text not null check (source in
+                  ('reddit','rss','trends','gsc','instagram','oliveyoung','babitalk','klook','agoda','manual')),
+  external_id   text not null,
   url           text,
   title         text,
-  raw           jsonb default '{}'::jsonb,   -- upvotes, comments, rank 등 원자료
+  raw           jsonb default '{}'::jsonb,   -- body, subreddit, rank 등 원자료
   occurred_at   timestamptz not null,
   collected_at  timestamptz not null default now(),
-  unique (source, external_id)        -- ★ 중복 실행 방어의 핵심
-);
-create index on mentions (keyword_id, occurred_at desc);
-
--- 일별 집계 (영구 보관)
-create table keyword_daily (
-  keyword_id       uuid not null references keywords(id) on delete cascade,
-  day              date not null,
-  reddit_posts     int  default 0,
-  reddit_score     int  default 0,
-  reddit_comments  int  default 0,
-  rss_articles     int  default 0,
-  trends_kr        smallint,
-  trends_us        smallint,
-  gap              smallint generated always as (coalesce(trends_kr,0) - coalesce(trends_us,0)) stored,
-  ig_trend         text,              -- up | flat | down
-  extra            jsonb default '{}'::jsonb,  -- 카테고리 전용 지표
-  primary key (keyword_id, day)
+  unique (source, external_id)               -- ★ 중복 실행 방어의 핵심
 );
 
--- 계산된 점수 (재계산 가능)
-create table keyword_scores (
-  keyword_id     uuid primary key references keywords(id) on delete cascade,
-  buzz           smallint,   -- 화제성 (최우선 가중치)
-  gap_score      smallint,   -- 격차 (절대값 기준)
-  competition    smallint,   -- 낮을수록 좋음
-  monetizable    smallint,   -- 제휴처 검색 결과
-  total          smallint,
-  sources_used   text[],     -- 계산에 쓰인 소스 (죽은 소스 제외)
-  computed_at    timestamptz not null default now()
-);
+-- ══════════════════════════════════════════════════════════
+-- 2. 수집 설정 — 화면에서 편집한다
+-- ══════════════════════════════════════════════════════════
 
--- ── 제작 축 ─────────────────────────────────────────
-create table ideas (                       -- 소재 = 키워드 묶음
-  id             uuid primary key default gen_random_uuid(),
-  title          text,
-  category       text not null,
-  format         text check (format in ('topn','deep','compare','faq')),
-  angle_note     text,                     -- 각도·관점 메모
-  local_comment  text,                     -- 현지인 코멘트
-  status         text not null default 'selected'
-                 check (status in ('selected','drafting','review','published','rejected')),
-  channels       text[] default '{}',      -- 승인 시 선택한 채널
-  sanity_post_id text,
-  revision_count smallint not null default 0,
-  selected_at    timestamptz not null default now(),
-  published_at   timestamptz,
-  updated_at     timestamptz not null default now()
-);
-
-create table idea_keywords (               -- 소재 ↔ 키워드 N:M
-  idea_id    uuid not null references ideas(id) on delete cascade,
-  keyword_id uuid not null references keywords(id) on delete cascade,
-  rank       smallint,                     -- TOP N 순위
-  primary key (idea_id, keyword_id)
-);
-
-create table channel_outputs (
-  id           uuid primary key default gen_random_uuid(),
-  idea_id      uuid not null references ideas(id) on delete cascade,
-  channel      text not null check (channel in ('web','pinterest','instagram','tiktok','naver','tistory')),
-  body         text,
-  seo          jsonb default '{}'::jsonb,  -- web 전용: focus_keyphrase, meta_*, faq[], schema_org_type
-  image_candidates jsonb default '[]'::jsonb,
-  image_url    text,                       -- 사람이 택1한 결과
-  status       text not null default 'pending'
-               check (status in ('pending','generated','approved','posted','skipped','failed')),
-  posted_at    timestamptz,
-  updated_at   timestamptz not null default now(),
-  unique (idea_id, channel)
-);
-
-create table revisions (
+create table if not exists collection_rules (
   id         uuid primary key default gen_random_uuid(),
-  idea_id    uuid not null references ideas(id) on delete cascade,
-  seq        smallint not null,
-  feedback   text not null,
-  created_at timestamptz not null default now(),
-  unique (idea_id, seq)
-);
-
-create table affiliate_links (
-  id             uuid primary key default gen_random_uuid(),
-  idea_id        uuid references ideas(id) on delete set null,
-  sanity_post_id text,
-  program        text not null,
-  product_name   text,
-  url            text not null,
-  added_at       timestamptz not null default now()
-);
-
--- ── 운영 축 ─────────────────────────────────────────
-create table source_status (
-  source            text not null,
-  category          text not null default 'products',  -- 주제(K-beauty/Stay/Where to go)별 이력 분리용
-  last_success_at   timestamptz,
-  last_attempt_at   timestamptz,
-  last_count        int,
-  consecutive_fails smallint not null default 0,
-  state             text not null default 'ok'
-                    check (state in ('ok','degraded','down')),
-  note              text,
-  primary key (source, category)
-);
-
-create table collection_rules (            -- 대시보드에서 편집 (키워드·소스 추가삭제)
-  id        uuid primary key default gen_random_uuid(),
-  category  text not null,
-  source    text not null,
-  value     text not null,                 -- 키워드 / 서브레딧 / RSS URL / 계정 ID / 해시태그
-  enabled   boolean not null default true,
-  options   jsonb not null default '{}'::jsonb,  -- 소스별 설정. reddit: {"period":"week"|"month"}
+  category   text not null,
+  source     text not null,
+  value      text not null,                       -- 서브레딧 / RSS URL
+  enabled    boolean not null default true,
+  options    jsonb not null default '{}'::jsonb,  -- reddit: {"period":"week"|"month"}
   created_at timestamptz not null default now(),
   unique (category, source, value)
 );
 
-create table jobs (
-  id               uuid primary key default gen_random_uuid(),
-  idea_id          uuid references ideas(id) on delete cascade,
-  kind             text not null check (kind in ('write_body','convert_channels','generate_images')),
-  channel          text,                   -- 채널 단위 재시도용
-  status           text not null default 'queued'
-                   check (status in ('queued','running','done','failed')),
-  n8n_execution_id text,
-  error            text,
-  requested_at     timestamptz not null default now(),
-  finished_at      timestamptz
-);
-
-create table title_excludes (              -- 대시보드에서 편집 (정기 게시판 등 제목 기반 제외 단어)
+-- 정기 게시판(요일 스레드 등)은 소재가 안 된다. 제목으로 거른다.
+create table if not exists title_excludes (
   id         uuid primary key default gen_random_uuid(),
   value      text not null unique,
   enabled    boolean not null default true,
   created_at timestamptz not null default now()
 );
 
--- docs/instagram_apify.md 기준 (관측 보드와 별개 서브시스템, /admin/instagram)
-create table instagram_watchlist (
-  username  text primary key,
-  active    boolean not null default true,
-  added_at  timestamptz not null default now(),
-  language  text check (language in ('ko','en','other'))
+create table if not exists source_status (
+  source            text not null,
+  category          text not null default 'products',
+  last_success_at   timestamptz,
+  last_attempt_at   timestamptz,
+  last_count        int,
+  consecutive_fails smallint not null default 0,
+  state             text not null default 'ok' check (state in ('ok','degraded','down')),
+  note              text,
+  primary key (source, category)
 );
 
-create table instagram_mentions (
-  external_post_id       text primary key,
-  account_username       text not null,
-  post_url               text not null,
-  post_type              text not null check (post_type in ('image','video','carousel','reel')),
-  caption_raw             text,
-  posted_at               timestamptz not null,
-  collected_at            timestamptz not null default now(),
-  likes_count             int,
-  comments_count          int,
-  is_informational        boolean,
-  category                text check (category in ('ingredient_expert','treatment','product_info','deal_event')),
-  summary                 text,
-  hashtags                text[],
-  is_comment_bait         boolean,
-  comment_trigger_phrase  text,
-  carousel_slide_count    int,
-  image_urls              text[],
-  vision_used             boolean,
-  long_summary            text,
-  manually_approved       boolean not null default false,
-  comment_text_posted     text,
-  comment_scheduled_at    timestamptz,
-  comment_posted_at       timestamptz,
-  comment_status          text check (comment_status in ('scheduled','posted','failed')),
-  comment_failure_reason  text,
-  status                  text not null default 'new'
-                          check (status in ('new','daily_life','not_applicable','comment_scheduled','comment_posted','info_received'))
-);
-create index on instagram_mentions (account_username, posted_at desc);
+-- ══════════════════════════════════════════════════════════
+-- 3. 분석 결과 — 원본과 분리해 쌓는다
+-- ══════════════════════════════════════════════════════════
 
-create table instagram_pipeline_runs (
-  id              uuid primary key default gen_random_uuid(),
-  run_type        text not null check (run_type in ('sync','collect','analyze')),
-  started_at      timestamptz not null default now(),
-  finished_at     timestamptz,
-  result_summary  text,
-  error           text
+create table if not exists post_analysis (
+  mention_id   uuid primary key references mentions(id) on delete cascade,
+  category     text,
+  post_type    text,          -- 추천요청 | 비교질문 | 후기리뷰 | 경험공유 | 진단도움 | 경고이슈 | 정보설명 | 잡담
+  beauty_area  text,          -- 스킨케어루틴 | 선케어 | 트러블여드름 | ... | 바디헤어
+  topic        text,          -- 정규화된 주제 (같은 주제끼리 묶는 열쇠)
+  topic_en     text,
+  summary_ko   text,
+  awareness    text,          -- 정확히앎 | 대충앎 | 오해 | 처음들음
+  worth        smallint,      -- 소재 가치 0~100
+  worth_parts  jsonb,         -- 점수 근거. 왜 이 점수인지 따져볼 수 있게 남긴다
+  misconception jsonb,        -- {has, what, correction}
+  korea_relevance jsonb,
+  comments_checked_at timestamptz,
+  layer        smallint not null default 1,
+  model        text,
+  analyzed_at  timestamptz not null default now()
+);
+create index if not exists post_analysis_topic_idx on post_analysis (topic);
+create index if not exists post_analysis_worth_idx on post_analysis (worth desc);
+
+create table if not exists post_comments (
+  mention_id  uuid not null references mentions(id) on delete cascade,
+  rank        smallint not null,
+  author      text,
+  body        text not null,
+  body_ko     text,
+  fetched_at  timestamptz not null default now(),
+  primary key (mention_id, rank)
 );
 
-create table instagram_dm_captures (
-  id                       uuid primary key default gen_random_uuid(),
-  mention_external_post_id text not null references instagram_mentions(external_post_id) on delete cascade,
-  message_text_raw         text not null,
-  message_type             text check (message_type in ('info','follow_confirm','other')),
-  received_at              timestamptz not null default now(),
-  requires_action          boolean not null default false,
-  action_taken             boolean not null default false,
-  action_taken_at          timestamptz,
-  extracted_info           text
+-- ══════════════════════════════════════════════════════════
+-- 4. 누적 자산 — 주마다 쌓이고 사라지지 않는다
+-- ══════════════════════════════════════════════════════════
+
+create table if not exists entities (
+  id             uuid primary key default gen_random_uuid(),
+  kind           text not null check (kind in
+                   ('clinic','treatment','product','brand','place','ingredient','channel','procedure')),
+  canonical_name text not null,
+  name_ko        text,
+  aliases        text[] not null default '{}',   -- Seoul Sy ↔ 서울에스와이피부과의원
+  meta           jsonb  not null default '{}'::jsonb,
+  first_seen_at  timestamptz not null default now(),
+  unique (kind, canonical_name)
 );
 
--- 미분석 검토 게시물 중, 댓글이 빠르게 몰리는 것들은 LLM 분석 결과와 무관하게
--- 워치리스트 콘텐츠로 자동 이동시키는 기준값(단일 행, 대시보드에서 직접 수정 가능)
-create table instagram_auto_approve_settings (
-  id                      boolean primary key default true check (id),
-  daily_comment_rate      int not null default 100,
-  early_window_hours      int not null default 6,
-  early_window_comments   int not null default 50
+-- role이 PK에 들어가야 "같은 병원을 본문에선 문의, 댓글에선 추천"을 따로 기록할 수 있다.
+create table if not exists entity_mentions (
+  entity_id   uuid not null references entities(id) on delete cascade,
+  mention_id  uuid not null references mentions(id) on delete cascade,
+  source_kind text not null default 'post' check (source_kind in ('post','comment')),
+  role        text not null default '',
+  sentiment   text,
+  quote       text,
+  created_at  timestamptz not null default now(),
+  primary key (entity_id, mention_id, source_kind, role)
 );
+create index if not exists entity_mentions_mention_idx on entity_mentions (mention_id);
+
+create table if not exists demand_signals (
+  mention_id     uuid primary key references mentions(id) on delete cascade,
+  age_band       text,
+  origin         text,
+  budget         text,
+  stay_duration  text,
+  goals          text[] not null default '{}',
+  constraints    text[] not null default '{}',
+  concerns       text[] not null default '{}',
+  extracted_at   timestamptz not null default now()
+);
+
+-- ══════════════════════════════════════════════════════════
+-- 5. 사람이 고른 것
+-- ══════════════════════════════════════════════════════════
+
+create table if not exists idea_cards (
+  mention_id   uuid primary key references mentions(id) on delete cascade,
+  angles       jsonb not null default '[]'::jsonb,   -- [{ko,en,guide}]
+  gap          text,                                  -- 정보 격차
+  detail       jsonb not null default '{}'::jsonb,
+  status       text not null default 'candidate'
+               check (status in ('candidate','saved','published','held','dropped')),
+  note         text,
+  chosen_angle smallint,
+  saved_at     timestamptz,
+  published_at timestamptz,
+  updated_at   timestamptz not null default now()
+);
+
+-- ══════════════════════════════════════════════════════════
+-- 6. 기본 데이터
+-- ══════════════════════════════════════════════════════════
+
+-- 레딧 4개 서브레딧. muacjdiscussion은 week로 받으면 12건뿐이라(2026-08-25 실측) 월간으로 넓힌다.
+insert into collection_rules (category, source, value, options) values
+  ('products', 'reddit', 'KoreanBeauty',       '{"period":"week"}'),
+  ('products', 'reddit', 'AsianBeauty',        '{"period":"week"}'),
+  ('products', 'reddit', 'SkincareAddiction',  '{"period":"week"}'),
+  ('products', 'reddit', '30PlusSkinCare',     '{"period":"week"}'),
+  ('products', 'reddit', 'muacjdiscussion',    '{"period":"month"}')
+on conflict (category, source, value) do nothing;
+
+-- 정기 게시판 제목. 기존 4개로는 요일 스레드가 8개 중 7개 통과해 버렸다.
+insert into title_excludes (value) values
+  ('Faves and Fails'), ('Simple Questions'), ('Temper Tantrum'),
+  ('Miscellaneous Monday'), ('Free Talk'), ('Request a Review'), ('Not Gonna Buy')
+on conflict (value) do nothing;

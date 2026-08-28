@@ -1,13 +1,10 @@
 {
-  "name": "museofseoul-dashboard",
+  "name": "reddit-research-lab",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "migrate": "node --env-file=.env.local migrate.js",
-    "test-db": "node --env-file=.env.local test-db.js",
-    "seed-rss": "node --env-file=.env.local seed-rss-sources.js",
-    "seed-reddit": "node --env-file=.env.local seed-reddit-sources.js",
+    "schema": "node --env-file=.env.local scripts/apply-schema.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
+import { VideoTab } from "@/components/video/VideoTab";
 import {
   SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
   getKeywords, getEntityKinds, getTopEntities, getDemands, getClinicGap,
@@ -16,9 +17,10 @@ const TABS = [
   { k: "rss", label: "RSS" },
   { k: "mine", label: "나의 요청" },
   { k: "draft", label: "글감" },
+  { k: "video", label: "유튜브" },
 ] as const;
 
-type SP = { tab?: string; area?: string; sub?: string };
+type SP = { tab?: string; area?: string; sub?: string; week?: string; v?: string };
 
 export default async function BoardPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -71,6 +73,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
       {tab === "rss" && <RssTab />}
       {tab === "mine" && <MineTab areas={areas} />}
       {tab === "draft" && <DraftTab cards={saved} />}
+      {tab === "video" && <VideoTab week={sp.week} video={sp.v} />}
     </div>
   );
 }
