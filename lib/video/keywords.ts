@@ -10,7 +10,7 @@ import { pool } from "@/lib/db";
 
 export type PickedKeyword = {
   keyword: string; rank: number; score: number;
-  reason: { freq: number; avg_worth: number; source: "entity" | "topic" };
+  reason: { freq: number; avg_worth: number; source: "entity" | "topic"; search_query?: string };
 };
 
 // 검색어로 못 쓰는 것들. 너무 흔하거나 유튜브에서 의미가 없다.
@@ -25,7 +25,8 @@ const mondayOf = (d = new Date()) => {
   return x.toISOString().slice(0, 10);
 };
 
-export async function pickKeywords(week = mondayOf(), limit = 5): Promise<PickedKeyword[]> {
+// 기본 서비스는 주 3키워드로 고정한다(2026-08-27 결정).
+export async function pickKeywords(week = mondayOf(), limit = 3): Promise<PickedKeyword[]> {
   // 엔티티(제품·성분·브랜드·시술)에서 뽑는다. 사람이 유튜브에 실제로 칠 만한 말이다.
   const ents = (await pool.query<{ name: string; freq: number; avg_worth: number }>(
     `select e.canonical_name as name,

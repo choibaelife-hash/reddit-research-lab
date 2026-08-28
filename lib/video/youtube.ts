@@ -78,13 +78,15 @@ async function channelMedian(channelId: string): Promise<number> {
 export async function searchKeyword(keyword: string, opts: {
   days?: number; minViews?: number; max?: number;
 } = {}): Promise<{ candidates: Candidate[]; unitsUsed: number }> {
-  const { days = 90, minViews = 1000, max = 50 } = opts;
+  // 최종 산출물이 숏츠 제작 가이드라 최근 30일 · 짧은 영상으로 좁힌다(2026-08-27 결정).
+  // videoDuration=short는 유튜브 기준 4분 미만 — 진짜 쇼츠(<60초) 여부는 pickTop에서 다시 거른다.
+  const { days = 30, minViews = 1000, max = 50 } = opts;
   let units = 0;
 
   const after = new Date(Date.now() - days * 86400_000).toISOString();
   const search = await get("search", {
     part: "snippet", q: keyword, type: "video", maxResults: String(Math.min(max, 50)),
-    order: "viewCount", publishedAfter: after, relevanceLanguage: "en",
+    order: "viewCount", publishedAfter: after, relevanceLanguage: "en", videoDuration: "short",
   });
   units += COST.search;
 
@@ -126,26 +128,18 @@ export async function searchKeyword(keyword: string, opts: {
   return { candidates: rows, unitsUsed: units };
 }
 
-// 쇼츠와 롱폼은 성격이 달라 따로 고른다. 섞으면 쇼츠가 아웃라이어를 독식한다.
+// 최종 산출물이 숏츠 제작 가이드라 롱폼은 뺀다(2026-08-27 결정, 03-VIDEO.md 2장).
 export function pickTop(cands: Candidate[], n = 5): Candidate[] {
-  const scored = cands.filter((c) => c.outlier != null);
-  const shorts = scored.filter((c) => c.duration_sec < 60).sort((a, b) => b.outlier! - a.outlier!);
-  const longs  = scored.filter((c) => c.duration_sec >= 60).sort((a, b) => b.outlier! - a.outlier!);
-
-  const out: Candidate[] = [];
-  const half = Math.ceil(n / 2);
-  out.push(...longs.slice(0, half), ...shorts.slice(0, n - half));
-
-  // 한쪽이 부족하면 다른 쪽에서 채운다.
-  if (out.length < n) {
-    const rest = scored.filter((c) => !out.includes(c)).sort((a, b) => b.outlier! - a.outlier!);
-    out.push(...rest.slice(0, n - out.length));
-  }
-  return out.slice(0, n);
+  return cands
+    .filter((c) => c.outlier != null && c.duration_sec < 60)
+    .sort((a, b) => b.outlier! - a.outlier!)
+    .slice(0, n);
 }
 
 export async function saveCandidates(week: string, keywordId: number, cands: Candidate[], picked: Candidate[]) {
   const pickedIds = new Set(picked.map((p) => p.video_id));
+  // 재실행 시 이번에 다시 안 뽑힌 영상이 예전 picked=true로 남지 않게 먼저 초기화한다.
+  await pool.query(`update video_candidates set picked = false where week = $1 and keyword_id = $2`, [week, keywordId]);
   for (const c of cands) {
     await pool.query(
       `insert into video_candidates

@@ -39,15 +39,33 @@ create table if not exists video_candidates (
   unique (week, video_id)
 );
 
--- 2단계(GPU) 산출물. 지금은 비어 있고 컬럼만 준비한다.
+-- 2단계(GPU) 산출물, 영상 1편 단위.
 create table if not exists video_analysis (
   video_pk     bigint      primary key references video_candidates(id) on delete cascade,
-  transcript   text,                              -- Whisper
-  thumb_desc   text,                              -- Qwen3-VL 썸네일 판독
-  hook_desc    text,                              -- 첫 15초 프레임 분석
+  transcript   text,                              -- Whisper. 자연어라 text가 맞다
+  thumb_desc   jsonb,                             -- Qwen3-VL 썸네일 판독 {layout, subject, products, texts[]}
+  hook_desc    jsonb,                             -- 첫 15초 {beats[], opening, subject_on_screen_at, closeup_at}
   guide        jsonb,                             -- 최종 제작 가이드
   analyzed_at  timestamptz
 );
 
+-- 처음엔 thumb_desc·hook_desc를 text로 잡았다가 jsonb로 바꿨다(2026-08-28).
+-- text면 객체가 문자열로 한 겹 감싸져 저장돼(`"{\"layout\":...}"`) 화면에서 못 읽는다.
+-- 이미 만들어진 DB를 위해 여기서 맞춰준다. 이미 jsonb면 무해하게 통과한다.
+alter table video_analysis alter column thumb_desc type jsonb using thumb_desc::jsonb;
+alter table video_analysis alter column hook_desc  type jsonb using hook_desc::jsonb;
+
 create index if not exists video_candidates_week_idx   on video_candidates (week, outlier desc nulls last);
 create index if not exists video_candidates_kw_idx     on video_candidates (keyword_id);
+
+-- 2단계 종합(D단계): video_analysis는 영상 1편 단위고, 이건 그 키워드의 5편을 모아 비교한 결과다.
+-- jsonb 한 덩어리 대신 필드로 나눈다 — 나중에 "빈 구멍에 X가 몇 번 나왔나" 같은 걸
+-- 컬럼으로 바로 조회·집계할 수 있어야 하기 때문(2026-08-27 결정).
+create table if not exists video_keyword_analysis (
+  keyword_id        bigint      primary key references video_keywords(id) on delete cascade,
+  empty_gap         text,                            -- 빈 구멍
+  thumbnail_pattern text,                             -- "5편 중 4편이 클로즈업" 같은 요약
+  hook_pattern      text,                             -- 첫 15초 공통 패턴
+  title_candidates  text[],                           -- 제목 후보
+  analyzed_at       timestamptz
+);

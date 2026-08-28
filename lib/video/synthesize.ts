@@ -1,0 +1,106 @@
+import { pool } from "@/lib/db";
+
+// D단계 — 영상 5편의 분석을 모아 "그래서 뭘 만들어야 하나" 한 장으로 만든다.
+//
+// video_analysis는 영상 1편 단위고, 여기 결과는 키워드 단위다(9장).
+// 화면에 나가는 건 개별 영상이 아니라 이 종합이다(8장).
+//
+// 왜 Qwen3-VL이 아니라 OpenAI인가:
+// [02-INFRA 2장](../../docs/saas/02-INFRA.md)이 "2층 = 긴 자연어 생성 = 제품 가치 → API 유지"로
+// 이미 정해둔 원칙이다. 게다가 "5편 중 4편" 같은 개수 세기는 4B 모델이 약하다.
+
+const MODEL = "gpt-4.1-mini";
+
+const SCHEMA = {
+  type: "object",
+  properties: {
+    empty_gap: { type: "string" },
+    thumbnail_pattern: { type: "string" },
+    hook_pattern: { type: "string" },
+    title_candidates: { type: "array", items: { type: "string" } },
+  },
+  required: ["empty_gap", "thumbnail_pattern", "hook_pattern", "title_candidates"],
+  additionalProperties: false,
+};
+
+const SYSTEM = `한국인 크리에이터가 영어권 유튜브 숏츠를 만들도록 돕는다.
+같은 키워드로 터진 영상 여러 편의 분석을 받아, "그래서 뭘 만들어야 하나"를 한국어로 정리한다.
+
+규칙:
+- 패턴에는 반드시 숫자를 붙인다. "얼굴 클로즈업이 좋다"가 아니라 "5편 중 4편이 얼굴 클로즈업".
+  근거가 되는 영상 수를 세어서 쓴다. 지어내지 않는다.
+- empty_gap은 "이 영상들이 공통으로 다루지 않은 것" 중 한국인이 답할 수 있는 지점을 고른다.
+  분석 자료에 근거가 없으면 "표본에서 판단할 수 없음"이라고 쓴다.
+- thumbnail_pattern에는 **실제로 쓰인 글자 문구**와 색·위치·크기 같은 값을 넣는다.
+  폰트 이름은 자료에 없으니 추측해서 쓰지 마라.
+- title_candidates는 영어 제목 3개. 실제 영상들의 제목 문법을 따르되 베끼지 않는다.
+- 자료가 비어 있는 항목은 정직하게 "자료 없음"이라고 쓴다.`;
+
+export type Synthesis = {
+  empty_gap: string;
+  thumbnail_pattern: string;
+  hook_pattern: string;
+  title_candidates: string[];
+};
+
+export async function synthesizeKeyword(keywordId: number): Promise<Synthesis | null> {
+  const { rows } = await pool.query(
+    `select c.title, c.channel_title, c.views, c.outlier, c.duration_sec,
+            a.transcript, a.thumb_desc, a.hook_desc
+       from video_candidates c
+       join video_analysis a on a.video_pk = c.id
+      where c.keyword_id = $1 and c.picked
+      order by c.outlier desc nulls last`,
+    [keywordId]
+  );
+  if (!rows.length) return null;
+
+  const { rows: [kw] } = await pool.query(
+    `select keyword, reason from video_keywords where id = $1`, [keywordId]
+  );
+
+  const payload = {
+    keyword: kw?.keyword,
+    search_query: kw?.reason?.search_query ?? kw?.keyword,
+    video_count: rows.length,
+    videos: rows.map((r, i) => ({
+      n: i + 1,
+      title: r.title,
+      channel: r.channel_title,
+      outlier: r.outlier,
+      duration_sec: r.duration_sec,
+      transcript: r.transcript,
+      thumbnail: r.thumb_desc,
+      hook: r.hook_desc,
+    })),
+  };
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: `영상 ${rows.length}편의 분석이다. 종합하라.\n${JSON.stringify(payload, null, 1)}` },
+      ],
+      response_format: { type: "json_schema", json_schema: { name: "synthesis", strict: true, schema: SCHEMA } },
+      temperature: 0.3,
+    }),
+  });
+  if (!res.ok) throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 200)}`);
+
+  const s: Synthesis = JSON.parse((await res.json()).choices[0].message.content);
+
+  await pool.query(
+    `insert into video_keyword_analysis
+       (keyword_id, empty_gap, thumbnail_pattern, hook_pattern, title_candidates, analyzed_at)
+     values ($1,$2,$3,$4,$5, now())
+     on conflict (keyword_id) do update set
+       empty_gap = excluded.empty_gap, thumbnail_pattern = excluded.thumbnail_pattern,
+       hook_pattern = excluded.hook_pattern, title_candidates = excluded.title_candidates,
+       analyzed_at = excluded.analyzed_at`,
+    [keywordId, s.empty_gap, s.thumbnail_pattern, s.hook_pattern, s.title_candidates]
+  );
+  return s;
+}

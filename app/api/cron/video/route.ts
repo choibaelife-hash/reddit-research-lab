@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const limit = Number(req.nextUrl.searchParams.get("limit") ?? 5);
+  const limit = Number(req.nextUrl.searchParams.get("limit") ?? 3);
   const week = req.nextUrl.searchParams.get("week") ?? undefined;
   try {
     return NextResponse.json(await runVideo({ week, limit }));
