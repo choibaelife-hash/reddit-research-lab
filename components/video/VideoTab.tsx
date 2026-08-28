@@ -142,18 +142,26 @@ export async function VideoTab({ week, video }: { week?: string; video?: string 
   );
 }
 
+// 모델은 확실하지 않을 때 "unknown"을 쓰라고 지시받았다. 그걸 화면에 그대로 내보내면
+// 글자가 없는 썸네일이 «"unknown"»이라는 문구를 가진 것처럼 보인다.
+const real = (s: unknown) => typeof s === "string" && s.trim() && s.toLowerCase() !== "unknown";
+
+// Whisper는 말이 없고 음악만 있으면 "Music" 한 단어를 돌려준다. 대사가 아니다.
+const NO_SPEECH = /^(music|음악|\[music\]|\(music\)|thank you\.?)$/i;
+
 function Detail({ v, week }: { v: VideoRow; week: string }) {
   const t = v.thumb_desc, h = v.hook_desc;
-  const texts: any[] = (t?.texts ?? []).filter((x: any) => x?.content);
+  const texts: any[] = (t?.texts ?? []).filter((x: any) => real(x?.content));
   const beats: any[] = h?.beats ?? [];
-  const lines = firstLines(v.transcript);
+  const spoken = v.transcript && !NO_SPEECH.test(v.transcript.trim()) ? v.transcript : null;
+  const lines = firstLines(spoken);
   const likeRate = v.like_count && v.views
     ? ((Number(v.like_count) / Number(v.views)) * 100).toFixed(2) : null;
 
   return (
     <section className="block">
       <div className="dhead">
-        <Link className="back" href={`/board?tab=video&week=${week}`}>← 브리핑으로</Link>
+        <Link className="vd-back" href={`/board?tab=video&week=${week}`}>← 브리핑으로</Link>
         <a className="ytlink" href={`https://www.youtube.com/watch?v=${v.video_id}`}
            target="_blank" rel="noreferrer">유튜브에서 보기 ↗</a>
       </div>
@@ -176,9 +184,11 @@ function Detail({ v, week }: { v: VideoRow; week: string }) {
         </div>
       </div>
 
-      {texts.length > 0 && (
+      <p className="rl">썸네일에 쓰인 문구</p>
+      {texts.length === 0 ? (
+        <p className="note small">이 썸네일에는 읽어낼 글자가 없습니다.</p>
+      ) : (
         <>
-          <p className="rl">썸네일에 쓰인 문구</p>
           <div className="texts">
             {texts.map((x, i) => (
               <div className="trow" key={i}>
@@ -191,21 +201,21 @@ function Detail({ v, week }: { v: VideoRow; week: string }) {
         </>
       )}
 
-      {lines.length > 0 && (
-        <>
-          <p className="rl">첫 대사 <span className="sub2">말문을 어떻게 열었나</span></p>
-          <ol className="titles">{lines.map((l, i) => <li key={i}>{l}</li>)}</ol>
-        </>
+      <p className="rl">첫 대사 <span className="sub2">말문을 어떻게 열었나</span></p>
+      {lines.length === 0 ? (
+        <p className="note small">말소리가 없는 영상입니다 — 음악·자막만으로 진행됩니다.</p>
+      ) : (
+        <ol className="titles">{lines.map((l, i) => <li key={i}>{l}</li>)}</ol>
       )}
 
       {beats.length > 0 && (
         <>
           <p className="rl">첫 15초</p>
-          <div className="beats">
+          <div className="vd-beats">
             {beats.map((b, i) => (
-              <div className="beat" key={i}>
-                <div className="bt">{b.t}초</div>
-                <div className="bw">{b.what}</div>
+              <div className="vd-beat" key={i}>
+                <div className="vd-bt">{b.t}초</div>
+                <div className="vd-bw">{b.what}</div>
               </div>
             ))}
           </div>
@@ -216,10 +226,10 @@ function Detail({ v, week }: { v: VideoRow; week: string }) {
         </>
       )}
 
-      {v.transcript && (
+      {spoken && (
         <>
           <p className="rl">첫 15초 대사 전문</p>
-          <div className="mono">{v.transcript}</div>
+          <div className="mono">{spoken}</div>
         </>
       )}
     </section>

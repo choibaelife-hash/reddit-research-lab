@@ -310,9 +310,9 @@ a.dl:hover{opacity:.9}
 
 /* 영상 상세 */
 .dhead{display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
-.back{font-size:12px;font-weight:600;padding:.35rem .8rem;border-radius:7px;border:1px solid var(--border);
+.vd-back{font-size:12px;font-weight:600;padding:.35rem .8rem;border-radius:7px;border:1px solid var(--border);
  background:var(--surface-2);color:var(--text);text-decoration:none}
-.back:hover{color:var(--s2)}
+.vd-back:hover{color:var(--s2)}
 .ytlink{margin-left:auto;font-size:12px;font-weight:600;color:var(--s2);text-decoration:none}
 .ytlink:hover{text-decoration:underline}
 .dtop{display:grid;grid-template-columns:132px 1fr;gap:1.1rem}
@@ -326,9 +326,9 @@ a.dl:hover{opacity:.9}
  background:var(--tag);padding:.12rem .4rem;border-radius:4px}
 .tc{font-size:13.5px;font-weight:700}
 .tmeta{font-size:10.5px;color:var(--muted)}
-.beats{display:flex;flex-direction:column;margin-top:.4rem}
-.beat{display:grid;grid-template-columns:48px 1fr;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--rule)}
-.beat:last-child{border-bottom:0}
-.bt{font-family:'Playfair Display',Georgia,serif;font-size:1rem;font-weight:700;color:var(--s1);
+.vd-beats{display:flex;flex-direction:column;margin-top:.4rem}
+.vd-beat{display:grid;grid-template-columns:48px 1fr;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--rule)}
+.vd-beat:last-child{border-bottom:0}
+.vd-bt{font-family:'Playfair Display',Georgia,serif;font-size:1rem;font-weight:700;color:var(--s1);
  font-variant-numeric:tabular-nums}
-.bw{font-size:12.5px;line-height:1.7}
+.vd-bw{font-size:12.5px;line-height:1.7}
