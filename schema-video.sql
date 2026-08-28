@@ -53,6 +53,11 @@ alter table video_candidates add column if not exists channel_max   bigint;
 --   low: 채널 중앙값이 너무 작거나(표본 부족), 최댓값/중앙값 격차가 커서 중앙값이 대표성을 잃은 경우
 alter table video_candidates add column if not exists outlier_confidence text;
 
+-- 언어. relevanceLanguage=en은 힌트일 뿐이라 아랍어·스페인어·터키어 영상이 섞여 들어왔다.
+-- 훅과 대사를 참고하려면 실제로 영어를 말하는 영상이어야 하므로 audio 쪽을 기준으로 거른다.
+alter table video_candidates add column if not exists audio_language   text;
+alter table video_candidates add column if not exists default_language text;
+
 -- 2단계(GPU) 산출물, 영상 1편 단위.
 create table if not exists video_analysis (
   video_pk     bigint      primary key references video_candidates(id) on delete cascade,

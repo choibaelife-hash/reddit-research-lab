@@ -5,7 +5,8 @@ export type VideoRow = {
   id: number; video_id: string; title: string; channel_title: string;
   published_at: string; duration_sec: number; views: number;
   thumbnail_url: string; channel_median: number | null; outlier: number | null;
-  keyword: string; kw_rank: number;
+  like_count: number | null; keyword: string; kw_rank: number;
+  transcript: string | null; thumb_desc: any | null; hook_desc: any | null;
 };
 
 export async function getWeeks(): Promise<string[]> {
@@ -27,12 +28,33 @@ export async function getPicked(week: string): Promise<VideoRow[]> {
   return (await pool.query<VideoRow>(
     `select c.id, c.video_id, c.title, c.channel_title, c.published_at::text,
             c.duration_sec, c.views, c.thumbnail_url, c.channel_median, c.outlier,
-            k.keyword, k.rank as kw_rank
-       from video_candidates c join video_keywords k on k.id = c.keyword_id
+            c.like_count, k.keyword, k.rank as kw_rank,
+            a.transcript, a.thumb_desc, a.hook_desc
+       from video_candidates c
+       join video_keywords k on k.id = c.keyword_id
+       left join video_analysis a on a.video_pk = c.id
       where c.week = $1::date and c.picked
       order by k.rank, c.outlier desc nulls last`,
     [week]
   )).rows;
+}
+
+// 2단계 종합. 키워드 단위라 video_analysis(영상 단위)와 따로 조회한다.
+export type SynthesisRow = {
+  keyword_id: number; empty_gap: string | null; thumbnail_pattern: string | null;
+  hook_pattern: string | null; title_candidates: string[] | null;
+};
+
+// pg는 bigint를 문자열로 준다. 키를 문자열로 통일하지 않으면 조회가 항상 빗나간다.
+export async function getSynthesis(week: string): Promise<Map<string, SynthesisRow>> {
+  const r = await pool.query<SynthesisRow>(
+    `select s.keyword_id, s.empty_gap, s.thumbnail_pattern, s.hook_pattern, s.title_candidates
+       from video_keyword_analysis s
+       join video_keywords k on k.id = s.keyword_id
+      where k.week = $1::date`,
+    [week]
+  );
+  return new Map(r.rows.map((x) => [String(x.keyword_id), x]));
 }
 
 export const latestWeek = async () => (await getWeeks())[0] ?? mondayOf();

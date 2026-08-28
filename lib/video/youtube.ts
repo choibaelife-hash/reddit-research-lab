@@ -23,7 +23,22 @@ export type Candidate = {
   like_count: number | null; comment_count: number | null;
   description: string | null; category_id: string | null;
   channel_max: number | null; outlier_confidence: string | null;
+  audio_language: string | null; default_language: string | null;
 };
+
+// 영어권 시장을 보는 기능이므로 실제로 영어를 말하는 영상만 남긴다(2026-08-28).
+// `relevanceLanguage=en`은 검색 힌트일 뿐이라 아랍어·스페인어·터키어가 섞여 들어왔다.
+//
+// 음성 언어를 우선한다 — 제목만 영어고 말은 타밀어·힌디어인 영상이 실제로 있었다.
+// 훅과 대사를 참고하려는 목적이라 소리가 영어가 아니면 쓸모가 없다.
+// 둘 다 없으면 제목의 문자만 본다(라틴 문자가 아니면 뺀다).
+const NON_LATIN = /[؀-ۿЀ-ӿ֐-׿฀-๿ऀ-ॿ一-鿿぀-ヿ가-힯]/;
+
+function isEnglishMarket(v: { audio_language: string | null; default_language: string | null; title: string }) {
+  const lang = v.audio_language ?? v.default_language;
+  if (lang) return lang.toLowerCase().startsWith("en");
+  return !NON_LATIN.test(v.title);
+}
 
 function key() {
   const k = process.env.YOUTUBE_API_KEY;
@@ -138,9 +153,17 @@ export async function searchKeyword(keyword: string, opts: {
   units += COST.videos;
 
   const rows: Candidate[] = [];
+  let droppedLang = 0;
   for (const v of det.items ?? []) {
     const views = Number(v.statistics?.viewCount ?? 0);
     if (views < minViews) continue;   // 표본이 작으면 아웃라이어가 요동친다
+
+    const audio = v.snippet.defaultAudioLanguage ?? null;
+    const dflt = v.snippet.defaultLanguage ?? null;
+    if (!isEnglishMarket({ audio_language: audio, default_language: dflt, title: v.snippet.title })) {
+      droppedLang++;
+      continue;
+    }
 
     rows.push({
       video_id: v.id,
@@ -159,8 +182,11 @@ export async function searchKeyword(keyword: string, opts: {
       category_id: v.snippet.categoryId ?? null,
       channel_max: null,
       outlier_confidence: null,
+      audio_language: audio,
+      default_language: dflt,
     });
   }
+  if (droppedLang) console.log(`[youtube] "${keyword}" 비영어 ${droppedLang}편 제외`);
 
   // 채널 통계는 조회 비용이 있으니 상위 후보에만 매긴다.
   const top = [...rows].sort((a, b) => b.views - a.views).slice(0, 20);
@@ -198,19 +224,21 @@ export async function saveCandidates(week: string, keywordId: number, cands: Can
       `insert into video_candidates
          (week, keyword_id, video_id, title, channel_id, channel_title, published_at,
           duration_sec, views, thumbnail_url, channel_median, outlier, picked,
-          like_count, comment_count, description, category_id, channel_max, outlier_confidence)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          like_count, comment_count, description, category_id, channel_max, outlier_confidence,
+          audio_language, default_language)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        on conflict (week, video_id) do update set
          views = excluded.views, channel_median = excluded.channel_median,
          outlier = excluded.outlier, picked = excluded.picked,
          like_count = excluded.like_count, comment_count = excluded.comment_count,
          description = excluded.description, category_id = excluded.category_id,
-         channel_max = excluded.channel_max, outlier_confidence = excluded.outlier_confidence`,
+         channel_max = excluded.channel_max, outlier_confidence = excluded.outlier_confidence,
+         audio_language = excluded.audio_language, default_language = excluded.default_language`,
       [week, keywordId, c.video_id, c.title, c.channel_id, c.channel_title, c.published_at,
        c.duration_sec, c.views, c.thumbnail_url, c.channel_median, c.outlier,
        pickedIds.has(c.video_id),
        c.like_count, c.comment_count, c.description, c.category_id,
-       c.channel_max, c.outlier_confidence]
+       c.channel_max, c.outlier_confidence, c.audio_language, c.default_language]
     );
   }
 }

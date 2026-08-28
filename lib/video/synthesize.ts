@@ -41,6 +41,9 @@ const SYSTEM = `한국인 크리에이터가 영어권 유튜브 숏츠를 만�
   그래도 근거가 없을 때만 "표본에서 판단할 수 없음"이라고 쓴다. 이 답은 최후의 수단이다.
 - thumbnail_pattern에는 **실제로 쓰인 글자 문구**와 색·위치·크기 같은 값을 넣는다.
   폰트 이름은 자료에 없으니 추측해서 쓰지 마라.
+- hook_pattern에는 ★ **first_lines(실제 첫 대사)를 반드시 인용**하라.
+  "직접적으로 시작한다" 같은 뭉뚱그린 말 대신 "5편 중 3편이 'Trust me' 같은 단언으로 연다"처럼
+  실제 문장을 근거로 든다. 화면 자막(on_screen_text)이 있으면 그것도 같이 든다.
 - title_candidates는 영어 제목 3개. 실제 영상들의 제목 문법을 따르되 베끼지 않는다.
 - 자료가 비어 있는 항목은 정직하게 "자료 없음"이라고 쓴다.`;
 
@@ -50,6 +53,18 @@ export type Synthesis = {
   hook_pattern: string;
   title_candidates: string[];
 };
+
+// 자막에서 첫 문장 몇 개를 뽑는다. "인사말이냐 본론이냐" 같은 이진 구분보다
+// 실제로 뭐라고 말문을 열었는지가 대본을 쓸 때 훨씬 쓸모 있다(2026-08-28).
+// 자막은 이미 DB에 있으므로 추가 호출이 없다.
+export function firstLines(transcript: string | null, n = 3): string[] {
+  if (!transcript) return [];
+  return transcript
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, n);
+}
 
 export async function synthesizeKeyword(keywordId: number): Promise<Synthesis | null> {
   const { rows } = await pool.query(
@@ -83,6 +98,8 @@ export async function synthesizeKeyword(keywordId: number): Promise<Synthesis | 
       like_rate: r.like_count && Number(r.views)
         ? `${((Number(r.like_count) / Number(r.views)) * 100).toFixed(2)}%` : null,
       duration_sec: r.duration_sec,
+      // 말문을 어떻게 열었는지. hook_pattern에서 이걸 근거로 쓴다.
+      first_lines: firstLines(r.transcript),
       transcript: r.transcript,
       thumbnail: r.thumb_desc,
       hook: r.hook_desc,

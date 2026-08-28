@@ -36,8 +36,9 @@ async function ffmpeg() {
   throw new Error("ffmpeg 없음 — FFMPEG_BIN 환경변수로 경로를 지정할 것");
 }
 
-// 첫 15초 중 이 지점들을 본다. 훅은 대개 여기서 결판난다.
-const FRAME_TIMES = [0, 3, 7, 12];
+// 훅은 앞쪽에서 결판나므로 초반에 몰아서 본다(2026-08-28 조정).
+// 예전 [0,3,7,12]는 15초에 고르게 퍼져 있어 정작 중요한 첫 5초를 두 장으로만 봤다.
+const FRAME_TIMES = [0, 2, 5, 10];
 
 export type VideoAnalysis = {
   transcript: string | null;
@@ -179,9 +180,9 @@ JSON으로만 답하라. 설명 문장 금지.
   "beats": [
     { "t": 초(숫자), "what": "이 시점에 화면에서 무슨 일이 일어나는지 한 문장" }
   ],
-  "opening": "greeting | direct 중 하나. 인사말로 시작하면 greeting, 바로 본론이면 direct",
   "subject_on_screen_at": 제품이나 핵심 대상이 처음 등장하는 시점(초 숫자). 없으면 null,
-  "closeup_at": 클로즈업이 처음 나오는 시점(초 숫자). 없으면 null
+  "closeup_at": 클로즈업이 처음 나오는 시점(초 숫자). 없으면 null,
+  "on_screen_text": ["화면에 뜬 자막·글자를 나온 순서대로"]
 }
 
 각 항목은 반드시 값으로 채운다. 질문을 그대로 되돌려 쓰지 마라.`;

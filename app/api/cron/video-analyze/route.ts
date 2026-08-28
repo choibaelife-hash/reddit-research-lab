@@ -19,11 +19,13 @@ export async function GET(req: NextRequest) {
   const redo = req.nextUrl.searchParams.get("redo") === "1";
 
   try {
+    // 실패한 영상은 행만 남고 내용이 비어 있다. 그것도 다시 잡아야 재실행으로 복구된다.
+    const pending = "and (a.video_pk is null or (a.thumb_desc is null and a.hook_desc is null))";
     const { rows: todo } = await pool.query(
       `select c.id, c.video_id, c.thumbnail_url, c.title, c.keyword_id
          from video_candidates c
          left join video_analysis a on a.video_pk = c.id
-        where c.week = $1::date and c.picked ${redo ? "" : "and a.video_pk is null"}
+        where c.week = $1::date and c.picked ${redo ? "" : pending}
         order by c.outlier desc nulls last
         limit $2`,
       [week, limit]
@@ -42,6 +44,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 5편이 모두 끝난 키워드만 종합한다. 부분 자료로 "5편 중 4편"을 세면 틀린다.
+    //
+    // ★ 행이 있는지가 아니라 내용이 있는지를 본다(2026-08-28).
+    //   실패해도 analyzeVideo가 행은 남기므로, 존재만 확인하면 전부 실패한 키워드도
+    //   "준비됨"으로 보고 빈 자료로 종합을 돌린다. 실제로 그렇게 됐다.
     const { rows: ready } = await pool.query(
       `select k.id, k.keyword
          from video_keywords k
@@ -49,7 +55,8 @@ export async function GET(req: NextRequest) {
           and not exists (
             select 1 from video_candidates c
              left join video_analysis a on a.video_pk = c.id
-             where c.keyword_id = k.id and c.picked and a.video_pk is null)
+             where c.keyword_id = k.id and c.picked
+               and (a.video_pk is null or (a.thumb_desc is null and a.hook_desc is null)))
           and exists (select 1 from video_candidates c where c.keyword_id = k.id and c.picked)`,
       [week]
     );
