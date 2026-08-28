@@ -1,8 +1,8 @@
 # Railway 배포용. Vercel에서 옮기는 이유는 06-DEPLOY / 02-INFRA 4장 참고 —
 # 영상분석 2단계가 사용자 1명당 약 10분이라 서버리스 300초 한도를 넘는다.
 #
-# GPU는 이 이미지에 없다. Whisper·Qwen3-VL은 RunPod에 따로 두고 HTTP로 부른다.
-# 여기 필요한 건 yt-dlp(다운로드)와 ffmpeg(오디오·프레임 추출)뿐이다.
+# GPU도 모델도 이 이미지에 없다. 자막·이미지 판독은 OpenAI API로 부른다.
+# 여기 필요한 건 yt-dlp(다운로드)와 ffmpeg(오디오·프레임 추출)뿐이고 둘 다 CPU로 돈다.
 
 FROM node:24-slim AS deps
 WORKDIR /app

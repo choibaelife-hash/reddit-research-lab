@@ -5,8 +5,9 @@
 
 > **배포처 (2026-08-27 갱신)**
 > 1단계(레딧·유튜브 수집)는 **Vercel**에서 그대로 간다.
-> 2단계(GPU 분석)를 붙일 때 **Railway(웹·큐워커) + RunPod(GPU)** 로 옮긴다.
-> 이유와 시점은 [saas/02-INFRA 4장](saas/02-INFRA.md) 참고.
+> 2단계 분석을 붙일 때 **Railway**로 옮긴다. GPU는 빌리지 않는다 —
+> 자막·이미지 판독을 OpenAI API로 부르므로 컨테이너는 CPU만 쓴다 (2026-08-28 변경).
+> 절차는 [06-DEPLOY-RAILWAY](06-DEPLOY-RAILWAY.md), 뒤집힌 경위는 그 문서 2장 참고.
 > 옮길 때 이 문서의 `vercel env` 명령과 `vercel.json` 크론은 Railway 방식으로 재작성해야 한다.
 
 ---

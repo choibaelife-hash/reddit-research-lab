@@ -213,7 +213,12 @@ vLLM의 guided decoding(xgrammar/outlines)으로 **JSON 스키마를 문법 수�
 
 ---
 
-## 4. 배포처 — Railway + RunPod (2026-08-27 확정)
+## 4. 배포처 — Railway + RunPod (2026-08-27 확정 → **RunPod은 2026-08-28에 취소**)
+
+> ⚠️ **이 장의 RunPod 결정은 뒤집혔다.** GPU를 빌리지 않고 OpenAI API로 부르기로 했다.
+> 이유: mlx가 애플 전용이라 리눅스에서 안 돌고, 하루 15편 규모에서는 시간당 과금보다
+> 편당 과금이 싸다. 실측 비교는 [06-DEPLOY-RAILWAY 2장](../06-DEPLOY-RAILWAY.md).
+> **아래 손익분기 계산은 그대로 유효하다** — 사용량이 커지면 다시 볼 자리다.
 
 ### 결정
 
