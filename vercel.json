@@ -1,24 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/tick",
-      "schedule": "0 20 * * 0"
-    },
-    {
-      "path": "/api/cron/tick",
-      "schedule": "0 21 * * 0"
-    },
-    {
-      "path": "/api/cron/tick",
-      "schedule": "0 22 * * 0"
-    },
-    {
-      "path": "/api/cron/tick",
-      "schedule": "0 23 * * 0"
-    },
-    {
-      "path": "/api/cron/video",
-      "schedule": "0 1 * * 1"
-    }
-  ]
+  "_comment": "크론은 Railway로 옮겼다(2026-08-28). 여기 다시 넣으면 양쪽에서 이중 실행돼 비용이 두 배가 되고 유튜브 할당량도 두 번 탄다. 일정은 docs/06-DEPLOY-RAILWAY.md 참고."
 }
