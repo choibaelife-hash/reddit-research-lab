@@ -14,8 +14,9 @@ const run = promisify(execFile);
 //   ② yt-dlp 첫 15초 → ffmpeg 오디오 → Whisper → transcript
 //                    → ffmpeg 프레임 → VLM     → hook_desc
 //
-// 엔드포인트는 전부 환경변수로 뺀다. 맥에서는 mlx, 클라우드에서는 vLLM/RunPod —
-// OpenAI 호환이라 base_url만 갈아끼우면 된다(02-INFRA 3장).
+// 엔드포인트는 전부 환경변수로 뺀다. 맥에서는 mlx, 클라우드에서는 OpenAI —
+// 둘 다 OpenAI 호환이라 주소와 모델 이름만 갈아끼우면 된다.
+// GPU를 빌리지 않기로 했다(2026-08-28). 클라우드에는 모델을 두지 않는다.
 
 const VLM_URL = process.env.VLM_URL ?? "http://localhost:8080/v1/chat/completions";
 const VLM_MODEL = process.env.VLM_MODEL ?? "mlx-community/Qwen3-VL-4B-Instruct-4bit";
@@ -23,6 +24,12 @@ const WHISPER_URL = process.env.WHISPER_URL;           // 없으면 로컬 CLI�
 const WHISPER_MODEL = process.env.WHISPER_MODEL ?? "mlx-community/whisper-large-v3-turbo";
 const YTDLP = process.env.YTDLP_BIN ?? "ml/.venv/bin/yt-dlp";
 const WHISPER_BIN = process.env.WHISPER_BIN ?? "ml/.venv/bin/mlx_whisper";
+
+// OpenAI는 인증 헤더를 요구하고, 맥의 mlx 서버는 헤더가 붙어도 무시한다.
+// 키가 있으면 붙이고 없으면 안 붙인다 — 로컬 실행이 지금 그대로 동작한다.
+const AUTH: Record<string, string> = process.env.OPENAI_API_KEY
+  ? { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+  : {};
 
 // yt-dlp의 --ffmpeg-location은 절대경로를 요구하고, Next.js 프로세스의 PATH에는
 // homebrew 경로가 없을 수 있다. 한 번만 찾아서 재사용한다.
@@ -57,7 +64,7 @@ async function callVLM(prompt: string, images: string[], maxTokens = 700) {
 
   const res = await fetch(VLM_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...AUTH },
     body: JSON.stringify({
       model: VLM_MODEL,
       messages: [{ role: "user", content }],
@@ -157,7 +164,7 @@ async function transcribe(wav: string, dir: string) {
     const form = new FormData();
     form.append("file", new Blob([await readFile(wav)]), "audio.wav");
     form.append("model", WHISPER_MODEL);
-    const res = await fetch(WHISPER_URL, { method: "POST", body: form });
+    const res = await fetch(WHISPER_URL, { method: "POST", body: form, headers: AUTH });
     if (!res.ok) throw new Error(`whisper ${res.status}`);
     return ((await res.json()).text ?? "").trim();
   }
