@@ -39,6 +39,20 @@ create table if not exists video_candidates (
   unique (week, video_id)
 );
 
+-- 2026-08-28 추가. 전부 `videos?part=snippet,statistics`가 이미 주던 것을 안 읽고 버렸던 값이다.
+-- 할당량은 메서드 호출당 과금이라 part를 늘려도 비용이 0이다.
+alter table video_candidates add column if not exists like_count    bigint;
+alter table video_candidates add column if not exists comment_count bigint;
+alter table video_candidates add column if not exists description   text;
+alter table video_candidates add column if not exists category_id   text;
+
+-- 채널 최근 업로드의 최댓값. 중앙값만으로는 양봉분포를 못 본다(11장 #11).
+alter table video_candidates add column if not exists channel_max   bigint;
+
+-- 아웃라이어를 믿어도 되는지. 분모가 이상하면 배율이 폭발한다.
+--   low: 채널 중앙값이 너무 작거나(표본 부족), 최댓값/중앙값 격차가 커서 중앙값이 대표성을 잃은 경우
+alter table video_candidates add column if not exists outlier_confidence text;
+
 -- 2단계(GPU) 산출물, 영상 1편 단위.
 create table if not exists video_analysis (
   video_pk     bigint      primary key references video_candidates(id) on delete cascade,

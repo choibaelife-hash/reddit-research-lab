@@ -24,13 +24,21 @@ const SCHEMA = {
 };
 
 const SYSTEM = `한국인 크리에이터가 영어권 유튜브 숏츠를 만들도록 돕는다.
-같은 키워드로 터진 영상 여러 편의 분석을 받아, "그래서 뭘 만들어야 하나"를 한국어로 정리한다.
+같은 키워드로 터진 영상 여러 편의 분석을 받아, "그래서 뭘 만들어야 하나"를 정리한다.
 
-규칙:
+★ 언어 규칙 (가장 중요)
+- empty_gap · thumbnail_pattern · hook_pattern은 **반드시 한국어 문장**으로 쓴다.
+  입력 자료가 영어여도 한국어로 답한다. 영어로 쓰면 안 된다.
+- title_candidates만 영어로 쓴다 (영어권 시청자용 제목이므로).
+
+내용 규칙:
 - 패턴에는 반드시 숫자를 붙인다. "얼굴 클로즈업이 좋다"가 아니라 "5편 중 4편이 얼굴 클로즈업".
   근거가 되는 영상 수를 세어서 쓴다. 지어내지 않는다.
 - empty_gap은 "이 영상들이 공통으로 다루지 않은 것" 중 한국인이 답할 수 있는 지점을 고른다.
-  분석 자료에 근거가 없으면 "표본에서 판단할 수 없음"이라고 쓴다.
+  ★ 자막(transcript)에 무엇이 있었는지가 아니라 **무엇이 없었는지**를 보라.
+  영상들이 전부 "무엇을"까지만 말하고 "왜"를 안 다뤘다면 그게 빈 구멍이다.
+  성분 원리·한국 현지 사정·가격 차이·피부 타입별 차이처럼 흔히 비는 축을 먼저 확인하라.
+  그래도 근거가 없을 때만 "표본에서 판단할 수 없음"이라고 쓴다. 이 답은 최후의 수단이다.
 - thumbnail_pattern에는 **실제로 쓰인 글자 문구**와 색·위치·크기 같은 값을 넣는다.
   폰트 이름은 자료에 없으니 추측해서 쓰지 마라.
 - title_candidates는 영어 제목 3개. 실제 영상들의 제목 문법을 따르되 베끼지 않는다.
@@ -46,6 +54,7 @@ export type Synthesis = {
 export async function synthesizeKeyword(keywordId: number): Promise<Synthesis | null> {
   const { rows } = await pool.query(
     `select c.title, c.channel_title, c.views, c.outlier, c.duration_sec,
+            c.like_count, c.outlier_confidence,
             a.transcript, a.thumb_desc, a.hook_desc
        from video_candidates c
        join video_analysis a on a.video_pk = c.id
@@ -68,6 +77,11 @@ export async function synthesizeKeyword(keywordId: number): Promise<Synthesis | 
       title: r.title,
       channel: r.channel_title,
       outlier: r.outlier,
+      // 배율을 못 믿는 경우를 표시한다. 분모가 작거나 채널이 양봉분포인 것들이다.
+      outlier_confidence: r.outlier_confidence,
+      // 참여율. 조회수는 돈으로 사도 좋아요 비율은 못 산다 — 유료 노출을 가려낸다.
+      like_rate: r.like_count && Number(r.views)
+        ? `${((Number(r.like_count) / Number(r.views)) * 100).toFixed(2)}%` : null,
       duration_sec: r.duration_sec,
       transcript: r.transcript,
       thumbnail: r.thumb_desc,
