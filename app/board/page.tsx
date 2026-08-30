@@ -59,11 +59,9 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         <div className="navmeta">
           레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
           평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
-          {process.env.BOARD_PASSWORD && (
-            <form action={logout} style={{ display: "inline" }}>
-              <button type="submit" className="logout">로그아웃</button>
-            </form>
-          )}
+          <form action={logout} style={{ display: "inline" }}>
+            <button type="submit" className="logout">로그아웃</button>
+          </form>
         </div>
       </nav>
 

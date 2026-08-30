@@ -1,32 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/session.mjs";
 
-// 개인용 잠금장치.
-// 배포하면 /board가 인터넷에 열리므로 비밀번호 하나로 막는다.
-// 크론 라우트는 Bearer 토큰으로 따로 인증하므로 여기서 통과시킨다.
-
-export const COOKIE = "board_auth";
-
-// 쿠키에는 비밀번호 자체가 아니라 해시를 담는다. 쿠키를 훔쳐도 비밀번호는 모른다.
-export async function tokenFor(password: string) {
-  const data = new TextEncoder().encode(`museofseoul:${password}`);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
+// 로그인 검사. 세션 쿠키의 서명만 본다(미들웨어는 DB에 못 붙는다).
+//
+// 예전에는 BOARD_PASSWORD 하나로 잠갔다. 계정 개념이 없어서
+// 누가 들어왔는지 알 수 없었고, 데이터를 사람별로 나눌 수도 없었다.
+//
+// 크론 라우트는 Bearer 토큰으로 따로 인증한다(lib/cron-auth.ts). 여기서 통과시킨다.
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 크론은 Authorization 헤더로 인증한다. 로그인 화면과 정적 파일도 통과.
   if (pathname.startsWith("/api/") || pathname.startsWith("/login") || pathname.startsWith("/_next")) {
     return NextResponse.next();
   }
 
-  const expected = process.env.BOARD_PASSWORD;
-  // 비밀번호를 설정하지 않았으면 잠그지 않는다 (로컬 개발용).
-  if (!expected) return NextResponse.next();
-
-  const got = req.cookies.get(COOKIE)?.value;
-  if (got && got === (await tokenFor(expected))) return NextResponse.next();
+  if (await verifySession(req.cookies.get(SESSION_COOKIE)?.value)) {
+    return NextResponse.next();
+  }
 
   const url = req.nextUrl.clone();
   url.pathname = "/login";
