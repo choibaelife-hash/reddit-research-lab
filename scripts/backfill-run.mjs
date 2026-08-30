@@ -18,9 +18,13 @@ if (!ws) {
   process.exit(1);
 }
 
-// 이번 주 월요일
+// 이번 주 월요일. **워크스페이스의 타임존으로** 계산한다.
+// now()만 쓰면 서버 UTC 기준이 되어, 한국 월요일 새벽이 UTC로는 일요일이라
+// 지난 주차로 들어간다. runs.week를 쓰는 다른 코드(lib/schedule.ts)와도 어긋난다.
 const { rows: [{ monday }] } = await client.query(
-  `select date_trunc('week', now())::date as monday`
+  `select (date_trunc('week', now() at time zone timezone))::date as monday
+     from workspaces where id = $1`,
+  [ws.id]
 );
 
 for (const [kind, tables] of [

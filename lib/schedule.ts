@@ -47,8 +47,13 @@ export type DueWorkspace = { id: string; name: string; week: string; timezone: s
 /**
  * 지금 돌 차례인 워크스페이스들.
  *
- * 크론이 매시간 깨어나므로 "그 타임존에서 지금이 예정 요일·시각인가"를 본다.
- * 이미 이번 주에 돌았으면 건너뛴다 — 같은 시각에 두 번 깨어나도 두 번 돌지 않는다.
+ * "그 타임존에서 오늘이 예정 요일이고, 예정 시각이 지났는가"를 본다.
+ *
+ * 시각을 `==`가 아니라 `>=`로 보는 이유: 주 1회짜리 시스템에서 그 한 번을 놓치면
+ * 일주일이 통째로 날아간다. 크론을 예정 시각부터 몇 시간 더 돌려두면(예: 0 9-12 * * 1)
+ * 첫 시도가 실패해도 같은 날 다시 잡힌다.
+ *
+ * 이미 이번 주에 돌았으면 건너뛴다 — 성공한 뒤의 재시도는 즉시 종료된다.
  *
  * 'running'이 3시간 넘게 남아 있으면 죽은 실행으로 보고 다시 잡는다.
  * 안 그러면 한 번 터진 워크스페이스가 영원히 막힌다.
@@ -63,7 +68,7 @@ export async function dueWorkspaces(limit = 3): Promise<DueWorkspace[]> {
             (date_trunc('week', now() at time zone w.timezone))::date::text as week
        from workspaces w
       where extract(dow  from now() at time zone w.timezone)::int = w.schedule_dow
-        and extract(hour from now() at time zone w.timezone)::int = w.schedule_hour
+        and extract(hour from now() at time zone w.timezone)::int >= w.schedule_hour
         and not exists (
           select 1 from runs r
            where r.workspace_id = w.id
