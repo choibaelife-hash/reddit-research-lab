@@ -332,3 +332,12 @@ a.dl:hover{opacity:.9}
 .vd-bt{font-family:'Playfair Display',Georgia,serif;font-size:1rem;font-weight:700;color:var(--s1);
  font-variant-numeric:tabular-nums}
 .vd-bw{font-size:12.5px;line-height:1.7}
+
+/* 상단 워크스페이스·주차 선택 */
+.wspick { display: inline-flex; gap: 4px; align-items: center; margin-right: 10px; }
+.wspick select { font: inherit; padding: 2px 6px; }
+.wspick button { font: inherit; padding: 2px 8px; cursor: pointer; }
+.wklinks { display: inline-flex; gap: 6px; margin-right: 10px; }
+.wk { text-decoration: none; opacity: .55; }
+.wk.on { opacity: 1; font-weight: 700; text-decoration: underline; }
+.mypagelink { margin-right: 10px; text-decoration: underline; }

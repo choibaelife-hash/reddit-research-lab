@@ -2,7 +2,8 @@ import Link from "next/link";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
 import { VideoTab } from "@/components/video/VideoTab";
-import { currentRun } from "@/lib/workspace";
+import { currentRun, myWorkspaces, currentWorkspace, myRuns } from "@/lib/workspace";
+import { switchWorkspace } from "./switch";
 import {
   SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
   getKeywords, getEntityKinds, getTopEntities, getDemands, getClinicGap,
@@ -30,6 +31,10 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   // 화면 전체가 이 실행 하나를 본다. week가 없으면 가장 최근 주.
   const run = await currentRun("reddit", sp.week);
   const runId = run?.id ?? null;
+
+  const [spaces, here, runs] = await Promise.all([
+    myWorkspaces(), currentWorkspace(), myRuns("reddit"),
+  ]);
 
   const [stats, cards, areas] = await Promise.all([
     getStats(runId), getCards(runId), getAreas(runId),
@@ -64,8 +69,36 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           ))}
         </div>
         <div className="navmeta">
+          <form action={switchWorkspace} className="wspick">
+            <select name="ws" defaultValue={here?.id ?? ""}>
+              {spaces.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+            <button type="submit">전환</button>
+          </form>
+
+          {/* 주차는 링크 목록으로 고른다.
+              select로 하면 onChange를 붙일 클라이언트 컴포넌트가 하나 더 필요하다. */}
+          <span className="wklinks">
+            {runs.length === 0 && <span className="wk">기록 없음</span>}
+            {runs.slice(0, 6).map((r) => (
+              <Link
+                key={r.id}
+                href={href({ week: r.week })}
+                className={`wk${(sp.week ?? runs[0]?.week) === r.week ? " on" : ""}`}
+                scroll={false}
+              >
+                {r.week.slice(5).replace("-", "/")}
+              </Link>
+            ))}
+          </span>
+
+          <Link href="/mypage" className="mypagelink">마이페이지</Link>
+
           레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
           평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
+
           <form action={logout} style={{ display: "inline" }}>
             <button type="submit" className="logout">로그아웃</button>
           </form>

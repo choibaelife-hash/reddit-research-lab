@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getWeeks, getKeywordsOf, getPicked, getSynthesis, latestWeek, type VideoRow } from "@/lib/video/data";
+import { currentWorkspace } from "@/lib/workspace";
 import { firstLines } from "@/lib/video/synthesize";
 
 const fmt = (n: number) =>
@@ -9,7 +10,8 @@ const daysAgo = (iso: string) =>
   Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86400000));
 
 export async function VideoTab({ week, video }: { week?: string; video?: string }) {
-  const weeks = await getWeeks();
+  const ws = await currentWorkspace();
+  const weeks = await getWeeks(ws?.id ?? null);
   if (!weeks.length) {
     return (
       <section className="block">
