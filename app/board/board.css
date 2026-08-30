@@ -332,3 +332,76 @@ a.dl:hover{opacity:.9}
 .vd-bt{font-family:'Playfair Display',Georgia,serif;font-size:1rem;font-weight:700;color:var(--s1);
  font-variant-numeric:tabular-nums}
 .vd-bw{font-size:12.5px;line-height:1.7}
+
+
+/* 마이페이지 */
+.mysec { padding: 18px 20px; border-bottom: 1px solid var(--rule); }
+.mysec h2 { font-size: 15px; margin: 0 0 10px; }
+.mytable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mytable th, .mytable td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.mytable tr.on { background: var(--surface-2); }
+.inlineform { display: inline-flex; gap: 4px; align-items: center; }
+.inlineform input { font: inherit; padding: 2px 6px; min-width: 160px; }
+.inlineform button { font: inherit; padding: 2px 8px; cursor: pointer; }
+.st.done { color: var(--done-line); }
+.st.failed { color: var(--hole-fg); }
+.st.running { color: var(--s1); }
+.myerr { color: var(--hole-fg); font-size: 12px; margin-top: 4px; }
+.mynote { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+/* ── 우측 상단 계정 영역 ── */
+/* .bnav가 align-items:center라 이 줄만 폭을 꽉 채워 오른쪽으로 민다. */
+.navtop{width:100%;display:flex;justify-content:flex-end;gap:.4rem;padding:0 .2rem}
+
+.menu{position:relative}
+.menu>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--text);
+ border:1px solid var(--border);background:var(--surface);border-radius:999px;
+ padding:.28rem .7rem;display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap}
+.menu>summary::-webkit-details-marker{display:none}
+.menu>summary::after{content:"▾";font-size:9px;color:var(--muted)}
+.menu[open]>summary{border-color:var(--accent)}
+
+.menupanel{position:absolute;right:0;top:calc(100% + .3rem);z-index:20;min-width:190px;
+ background:var(--surface);border:1px solid var(--border);border-radius:10px;
+ padding:.3rem;box-shadow:0 6px 20px rgba(0,0,0,.10)}
+.mrow{display:block;width:100%;text-align:left;font:inherit;font-size:12px;color:var(--text);
+ background:none;border:0;border-radius:6px;padding:.36rem .5rem;cursor:pointer;text-decoration:none}
+.mrow:hover{background:var(--surface-2)}
+.mrow.on{font-weight:700;cursor:default}
+.mrow.dim{color:var(--muted);cursor:default}
+.mdate{color:var(--muted);font-size:10.5px;margin-left:.3rem}
+.mdiv{height:1px;background:var(--rule);margin:.3rem 0}
+.mhead{padding:.4rem .5rem;font-size:12px;color:var(--text)}
+.mplan{font-size:10.5px;color:var(--muted);margin-top:.15rem}
+
+/* ── 계층 줄: 워크스페이스 › 주차 ── */
+.navmeta{width:100%;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+ gap:.5rem;padding:0 .2rem}
+.crumb{display:inline-flex;align-items:center;gap:.4rem}
+.crumbws{color:var(--text);font-size:12px}
+.crumbsep{color:var(--muted)}
+.wkmenu>summary{font-weight:600}
+.navsum{color:var(--muted)}
+
+/* ── 마이페이지: 워크스페이스 카드 ── */
+.wscard{border:1px solid var(--border);border-radius:12px;background:var(--surface);
+ padding:.8rem .9rem;margin-bottom:.7rem}
+.wshead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;
+ padding-bottom:.5rem;border-bottom:1px solid var(--rule);margin-bottom:.55rem}
+.wscard.on{border-color:var(--accent)}
+.wknow{font-size:12px;font-weight:700;color:var(--s1)}
+.wklist{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem}
+.wkrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;font-size:12px;
+ padding:.35rem .1rem;border-bottom:1px solid var(--rule)}
+.wkrow:last-child{border-bottom:0}
+.wkname{font-weight:700;min-width:4.5rem}
+.wkgo{margin-left:auto;text-decoration:none;color:var(--s2)}
+.warn{background:var(--hole);color:var(--hole-fg);border-radius:8px;padding:.5rem .65rem;
+ font-size:12px;margin-top:.5rem}
+
+/* 마이페이지: 수집 일정 */
+.sched{border:1px solid var(--border);border-radius:10px;background:var(--surface);
+ padding:.5rem .7rem;margin:.6rem 0;font-size:12px}
+.schedrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;padding:.22rem 0}
+.schedrow+.schedrow{border-top:1px solid var(--rule)}
+.schedk{color:var(--muted);min-width:4.5rem}

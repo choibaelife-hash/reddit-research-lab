@@ -9,9 +9,14 @@ export type VideoRow = {
   transcript: string | null; thumb_desc: any | null; hook_desc: any | null;
 };
 
-export async function getWeeks(): Promise<string[]> {
+export async function getWeeks(workspaceId?: string | null): Promise<string[]> {
   return (await pool.query<{ w: string }>(
-    `select distinct week::text as w from video_keywords order by w desc limit 12`
+    `select distinct k.week::text as w
+       from video_keywords k
+       left join runs r on r.id = k.run_id
+      where ($1::uuid is null or r.workspace_id = $1::uuid)
+      order by w desc limit 12`,
+    [workspaceId ?? null]
   )).rows.map((r) => r.w);
 }
 

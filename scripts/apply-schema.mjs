@@ -11,7 +11,9 @@ if (!process.env.DATABASE_URL) {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const files = process.argv.slice(2).length ? process.argv.slice(2) : ["schema.sql", "schema-video.sql"];
+const files = process.argv.slice(2).length
+  ? process.argv.slice(2)
+  : ["schema.sql", "schema-video.sql", "schema-saas.sql"];
 
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
