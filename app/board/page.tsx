@@ -30,7 +30,11 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
 
   // 화면 전체가 이 실행 하나를 본다. week가 없으면 가장 최근 주.
   const run = await currentRun("reddit", sp.week);
-  const runId = run?.id ?? null;
+  // 실행이 없으면 존재할 수 없는 번호를 넘긴다.
+  // null을 넘기면 조회 함수의 `$1 is null or ...` 조건이 참이 되어 필터가 통째로 꺼지고,
+  // 실행 기록이 하나도 없는 새 워크스페이스에 남의 워크스페이스 데이터가 보인다.
+  // bigserial은 1부터 시작하므로 0은 어떤 행과도 안 맞는다.
+  const runId = run?.id ?? "0";
 
   const [spaces, here, runs] = await Promise.all([
     myWorkspaces(), currentWorkspace(), myRuns("reddit"),
