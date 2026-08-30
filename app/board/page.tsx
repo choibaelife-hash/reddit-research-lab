@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
 import { VideoTab } from "@/components/video/VideoTab";
+import { currentRun } from "@/lib/workspace";
 import {
   SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
   getKeywords, getEntityKinds, getTopEntities, getDemands, getClinicGap,
@@ -26,11 +27,17 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const tab = TABS.some((t) => t.k === sp.tab) ? sp.tab! : "main";
 
-  const [stats, cards, areas] = await Promise.all([getStats(), getCards(), getAreas()]);
+  // 화면 전체가 이 실행 하나를 본다. week가 없으면 가장 최근 주.
+  const run = await currentRun("reddit", sp.week);
+  const runId = run?.id ?? null;
+
+  const [stats, cards, areas] = await Promise.all([
+    getStats(runId), getCards(runId), getAreas(runId),
+  ]);
   const saved = cards.filter((c) => c.status === "saved");
   const href = (next: Partial<SP>) => {
     const q = new URLSearchParams();
-    const merged = { tab, area: sp.area, sub: sp.sub, ...next };
+    const merged = { tab, area: sp.area, sub: sp.sub, week: sp.week, ...next };
     for (const [k, v] of Object.entries(merged)) if (v) q.set(k, String(v));
     return `/board?${q.toString()}`;
   };
@@ -65,9 +72,9 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         </div>
       </nav>
 
-      {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} cards={cards} />}
+      {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} cards={cards} runId={runId} />}
       {tab === "ideas" && <IdeasTab cards={cards} />}
-      {tab === "stock" && <StockTab sub={sp.sub} href={href} />}
+      {tab === "stock" && <StockTab sub={sp.sub} href={href} runId={runId} />}
       {tab === "rss" && <RssTab />}
       {tab === "mine" && <MineTab areas={areas} />}
       {tab === "draft" && <DraftTab cards={saved} />}
@@ -78,13 +85,13 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
 
 /* ───────────────────────── 한눈에 ───────────────────────── */
 
-async function MainTab({ areas, area, href, cards }: any) {
+async function MainTab({ areas, area, href, cards, runId }: any) {
   const [keywords, entKinds, topEnts] = await Promise.all([
     getKeywords(), getEntityKinds(), getTopEntities(),
   ]);
   const selected = area && areas.some((a: any) => a.area === area) ? area : areas[0]?.area;
   const [areaPosts, areaTypes] = await Promise.all([
-    getAreaPosts(selected), getAreaTypes(selected),
+    getAreaPosts(selected, runId), getAreaTypes(selected, runId),
   ]);
 
   const kmax = Math.max(...keywords.map((k: any) => k.total), 1);
@@ -247,8 +254,8 @@ function IdeasTab({ cards }: { cards: any[] }) {
 
 /* ───────────────────────── 재고 ───────────────────────── */
 
-async function StockTab({ sub, href }: any) {
-  const [stock, dropped] = await Promise.all([getStock(), getStockDropped()]);
+async function StockTab({ sub, href, runId }: any) {
+  const [stock, dropped] = await Promise.all([getStock(20, runId), getStockDropped(20, runId)]);
   const filtered = sub ? stock.filter((p) => p.sub === sub) : stock;
   const top = filtered.filter((p) => p.worth >= 80);
 

@@ -26,7 +26,7 @@ export type Card = {
 const label = (ko: string | null, en: string | null) =>
   ko && en && ko !== en ? `${ko} / ${en}` : (ko || en || "");
 
-export async function getCards(): Promise<Card[]> {
+export async function getCards(runId?: string | null): Promise<Card[]> {
   const rows = (await pool.query(
     `select m.id, m.title, m.url, m.raw->>'body' as body,
             m.raw->>'subreddit' as sub, (m.raw->>'rank')::int as rank,
@@ -36,7 +36,9 @@ export async function getCards(): Promise<Card[]> {
        from idea_cards c
        join mentions m on m.id = c.mention_id
        join post_analysis a on a.mention_id = c.mention_id
-      order by a.worth desc, m.raw->>'subreddit'`
+      where ($1::bigint is null or c.run_id = $1::bigint)
+      order by a.worth desc, m.raw->>'subreddit'`,
+    [runId ?? null]
   )).rows;
 
   for (const r of rows) {
@@ -58,7 +60,7 @@ export type StockRow = {
   worth: number; keywords: string[];
 };
 
-export async function getStock(minWorth = 20): Promise<StockRow[]> {
+export async function getStock(minWorth = 20, runId?: string | null): Promise<StockRow[]> {
   return (await pool.query(
     `select m.id, m.title, m.url, m.raw->>'subreddit' as sub,
             a.beauty_area as area, a.post_type as type, a.topic, a.summary_ko, a.worth,
@@ -69,38 +71,53 @@ export async function getStock(minWorth = 20): Promise<StockRow[]> {
        join mentions m on m.id = a.mention_id
        left join idea_cards c on c.mention_id = m.id
       where c.mention_id is null and a.worth > $1
+        and ($2::bigint is null or a.run_id = $2::bigint)
       order by a.worth desc`,
-    [minWorth]
+    [minWorth, runId ?? null]
   )).rows as StockRow[];
 }
 
-export const getStockDropped = async (minWorth = 20) =>
+export const getStockDropped = async (minWorth = 20, runId?: string | null) =>
   (await pool.query<{ n: number }>(
     `select count(*)::int as n from post_analysis a
        left join idea_cards c on c.mention_id = a.mention_id
-      where c.mention_id is null and a.worth <= $1`, [minWorth]
+      where c.mention_id is null and a.worth <= $1
+        and ($2::bigint is null or a.run_id = $2::bigint)`,
+    [minWorth, runId ?? null]
   )).rows[0].n;
 
-export const getAreas = async () =>
+export const getAreas = async (runId?: string | null) =>
   (await pool.query<{ area: string; n: number; avg_worth: number; with_cmt: number }>(
     `select a.beauty_area as area, count(*)::int as n, round(avg(a.worth))::int as avg_worth,
             count(*) filter (where exists(select 1 from post_comments c where c.mention_id = a.mention_id))::int as with_cmt
-       from post_analysis a group by 1 order by n desc`
+       from post_analysis a
+      where ($1::bigint is null or a.run_id = $1::bigint)
+      group by 1 order by n desc`,
+    [runId ?? null]
   )).rows;
 
-export const getAreaPosts = async (area: string) =>
+export const getAreaPosts = async (area: string, runId?: string | null) =>
   (await pool.query<{ worth: number; title: string; url: string; topic: string; type: string }>(
     `select a.worth, m.title, m.url, a.topic, a.post_type as type
        from post_analysis a join mentions m on m.id = a.mention_id
-      where a.beauty_area = $1 order by a.worth desc limit 14`, [area]
+      where a.beauty_area = $1
+        and ($2::bigint is null or a.run_id = $2::bigint)
+      order by a.worth desc limit 14`,
+    [area, runId ?? null]
   )).rows;
 
-export const getAreaTypes = async (area: string) =>
+export const getAreaTypes = async (area: string, runId?: string | null) =>
   (await pool.query<{ type: string; n: number }>(
     `select post_type as type, count(*)::int as n from post_analysis
-      where beauty_area = $1 group by 1 order by n desc`, [area]
+      where beauty_area = $1
+        and ($2::bigint is null or run_id = $2::bigint)
+      group by 1 order by n desc`,
+    [area, runId ?? null]
   )).rows;
 
+// 아래 조회들은 실행번호로 거르지 않는다.
+// entities(이름 사전)와 mentions(레딧 원본)는 워크스페이스끼리 공유하는 자산이기 때문이다.
+// 같은 서브레딧을 고객 수만큼 중복 수집하면 레딧이 429로 막는다(07-SAAS.md 1장).
 export const getKeywords = async () =>
   (await pool.query<{
     name: string; name_ko: string | null; kind: string;
@@ -153,11 +170,15 @@ export const getRssItems = async (limit = 200) =>
        from mentions where source = 'rss' order by occurred_at desc limit $1`, [limit]
   )).rows;
 
-export const getStats = async () =>
+export const getStats = async (runId?: string | null) =>
   (await pool.query<{ posts: number; cards: number; entities: number; comments: number; avg_worth: number }>(
-    `select (select count(*)::int from post_analysis) as posts,
-            (select count(*)::int from idea_cards) as cards,
+    `select (select count(*)::int from post_analysis
+              where ($1::bigint is null or run_id = $1::bigint)) as posts,
+            (select count(*)::int from idea_cards
+              where ($1::bigint is null or run_id = $1::bigint)) as cards,
             (select count(*)::int from entities) as entities,
             (select count(distinct mention_id)::int from post_comments) as comments,
-            (select round(avg(worth))::int from post_analysis) as avg_worth`
+            (select round(avg(worth))::int from post_analysis
+              where ($1::bigint is null or run_id = $1::bigint)) as avg_worth`,
+    [runId ?? null]
   )).rows[0];
