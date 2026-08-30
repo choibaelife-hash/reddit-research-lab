@@ -3,12 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password.mjs";
-import { currentUserId } from "@/lib/workspace";
+import { currentUserId, myWorkspaces, me, PLANS } from "@/lib/workspace";
 
 export async function addWorkspace(formData: FormData) {
   const uid = await currentUserId();
   const name = String(formData.get("name") ?? "").trim();
   if (!uid || !name) return;
+
+  // 요금제 한도를 서버에서 막는다. 화면에서 버튼을 숨기는 것만으로는
+  // 폼을 직접 보내면 그만이라 한도가 지켜지지 않는다.
+  const who = await me();
+  const limit = PLANS[who?.plan ?? "pro"]?.workspaces ?? 1;
+  if ((await myWorkspaces()).length >= limit) return;
+
   await pool.query(`insert into workspaces (user_id, name) values ($1, $2)`, [uid, name]);
   revalidatePath("/mypage");
 }

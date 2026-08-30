@@ -64,3 +64,18 @@ alter table video_keywords add column if not exists run_id bigint references run
 create index if not exists post_analysis_run_idx  on post_analysis (run_id);
 create index if not exists idea_cards_run_idx     on idea_cards (run_id);
 create index if not exists video_keywords_run_idx on video_keywords (run_id);
+
+-- ══════════════════════════════════════════════════════════
+-- 구독 (2026-08-30 추가)
+-- ══════════════════════════════════════════════════════════
+--
+-- 결제 연동은 없다. 이 제품은 "돈을 낸 사람만 계정을 받는" 구조라(회원가입 페이지가 없다)
+-- 계정이 있다는 것 자체가 유료 고객이라는 뜻이다. free 등급을 두지 않는 이유가 이것이다.
+-- 요금제가 정하는 건 지금은 하나뿐 — 워크스페이스를 몇 개까지 만들 수 있나.
+alter table users add column if not exists plan text not null default 'pro';
+
+-- check 제약은 여러 번 실행해도 안전하게 붙인다(add constraint에는 if not exists가 없다).
+do $$ begin
+  alter table users add constraint users_plan_check check (plan in ('pro','team'));
+exception when duplicate_object then null;
+end $$;
