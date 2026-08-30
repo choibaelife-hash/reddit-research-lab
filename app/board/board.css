@@ -341,3 +341,18 @@ a.dl:hover{opacity:.9}
 .wk { text-decoration: none; opacity: .55; }
 .wk.on { opacity: 1; font-weight: 700; text-decoration: underline; }
 .mypagelink { margin-right: 10px; text-decoration: underline; }
+
+/* 마이페이지 */
+.mysec { padding: 18px 20px; border-bottom: 1px solid var(--rule); }
+.mysec h2 { font-size: 15px; margin: 0 0 10px; }
+.mytable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mytable th, .mytable td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.mytable tr.on { background: var(--surface-2); }
+.inlineform { display: inline-flex; gap: 4px; align-items: center; }
+.inlineform input { font: inherit; padding: 2px 6px; min-width: 160px; }
+.inlineform button { font: inherit; padding: 2px 8px; cursor: pointer; }
+.st.done { color: var(--done-line); }
+.st.failed { color: var(--hole-fg); }
+.st.running { color: var(--s1); }
+.myerr { color: var(--hole-fg); font-size: 12px; margin-top: 4px; }
+.mynote { font-size: 12px; color: var(--muted); margin-top: 8px; }
