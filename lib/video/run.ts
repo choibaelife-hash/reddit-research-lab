@@ -50,7 +50,7 @@ export async function runVideo(opts: { week?: string; limit?: number } = {}) {
     });
   }
 
-  // 유튜브 할당량은 돈 주고 못 산다. 이번 주에 얼마 썼는지 기록에 남긴다.
+  // 할당량은 돈 주고 못 산다(구글 심사만 가능). 얼마 썼는지 항상 남긴다.
   await tagRun(runId, ["video_keywords"]);
   await closeRun(runId, "done", {
     keywords: picks.length,

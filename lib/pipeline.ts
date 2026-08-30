@@ -208,6 +208,7 @@ export async function tick(): Promise<TickResult> {
     if (step === "idle") {
       return finish({ ran, stoppedBecause: "idle", elapsedMs: Date.now() - startedAt });
     }
+    // 이 단계를 끝까지 돌릴 시간이 남았는지 먼저 본다. 없으면 다음 크론에 넘긴다.
     const elapsed = Date.now() - startedAt;
     if (elapsed + STEP_BUDGET_MS[step] > HARD_LIMIT_MS) {
       return finish({ ran, stoppedBecause: "deadline", elapsedMs: elapsed, nextStep: step });
@@ -216,6 +217,9 @@ export async function tick(): Promise<TickResult> {
       const result = await runStep(step);
       ran.push({ step, result });
 
+      // 핵심 안전장치: 처리한 게 0건이면 즉시 멈춘다.
+      // "할 일 있다"는데 아무것도 처리하지 못했다면 조건과 처리 대상이 어긋난 것이다.
+      // 다시 물어봐야 같은 답이 나오므로 반복해봐야 의미가 없고, LLM 비용만 샌다.
       if (progressOf(step, result) === 0) {
         return finish({
           ran, stoppedBecause: "stalled", elapsedMs: Date.now() - startedAt, nextStep: step,
