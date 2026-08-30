@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "schema": "node --env-file=.env.local scripts/apply-schema.mjs",
+    "seed": "node --env-file=.env.local scripts/seed-account.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
