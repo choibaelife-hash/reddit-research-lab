@@ -34,10 +34,22 @@ for (const [kind, tables] of [
      returning id`,
     [ws.id, monday, kind]
   );
+  // 몇 건을 묶었는지 stats에 남긴다. 안 남기면 마이페이지 실행 기록이
+  // 실제로 100건을 묶고도 "글 0건 · 카드 0장"으로 보인다.
+  const counted = {};
   for (const t of tables) {
     const r = await client.query(`update ${t} set run_id = $1 where run_id is null`, [run.id]);
+    counted[t] = r.rowCount;
     console.log(`✔ ${t} ${r.rowCount}건 → 실행 #${run.id} (${kind})`);
   }
+
+  const stats = kind === "reddit"
+    ? { posts: counted.post_analysis, cards: counted.idea_cards }
+    : { keywords: counted.video_keywords };
+  await client.query(
+    `update runs set stats = stats || $2::jsonb where id = $1`,
+    [run.id, JSON.stringify(stats)]
+  );
 }
 
 console.log(`\n워크스페이스: ${ws.name}`);
