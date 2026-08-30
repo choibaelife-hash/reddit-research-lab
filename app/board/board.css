@@ -398,3 +398,10 @@ a.dl:hover{opacity:.9}
 .wkgo{margin-left:auto;text-decoration:none;color:var(--s2)}
 .warn{background:var(--hole);color:var(--hole-fg);border-radius:8px;padding:.5rem .65rem;
  font-size:12px;margin-top:.5rem}
+
+/* 마이페이지: 수집 일정 */
+.sched{border:1px solid var(--border);border-radius:10px;background:var(--surface);
+ padding:.5rem .7rem;margin:.6rem 0;font-size:12px}
+.schedrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;padding:.22rem 0}
+.schedrow+.schedrow{border-top:1px solid var(--rule)}
+.schedk{color:var(--muted);min-width:4.5rem}

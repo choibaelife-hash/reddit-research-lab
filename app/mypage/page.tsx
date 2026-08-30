@@ -3,6 +3,7 @@ import { logout } from "@/app/login/actions";
 import { switchWorkspace } from "@/app/board/switch";
 import {
   me, myWorkspaces, currentWorkspace, runsByWorkspace, lastRunAt, weekLabel, PLANS,
+  COLLECT_LABEL, nextCollectLabel, lastCollectLabel, collectLooksStale,
   type Run,
 } from "@/lib/workspace";
 import { addWorkspace, renameWorkspace, savePerspective } from "./actions";
@@ -47,12 +48,30 @@ export default async function MyPage() {
         <p>
           <b>{plan.label} 요금제</b> · 워크스페이스 {spaces.length} / {plan.workspaces} 사용
         </p>
-        <p className="mynote">마지막 수집: {last ? last.slice(0, 16).replace("T", " ") : "없음"}</p>
-        {/* 크론이 아직 Railway에 등록되지 않았다. "매주 월요일 6시" 같은 걸 써두면
-            실제로는 안 도는데 도는 것처럼 보여 거짓말이 된다. 사실대로 적는다. */}
-        <p className="warn">
-          자동 수집이 아직 등록되지 않았습니다. 지금은 사람이 직접 돌려야 새 주차가 생깁니다.
-        </p>
+
+        <div className="sched">
+          <div className="schedrow">
+            <span className="schedk">수집 주기</span>
+            <b>{COLLECT_LABEL}</b>
+            <span className="mynote">미국(하와이 제외)에서 일요일이 끝난 뒤에 모읍니다</span>
+          </div>
+          <div className="schedrow">
+            <span className="schedk">다음 수집</span>
+            <b>{nextCollectLabel()}</b>
+          </div>
+          <div className="schedrow">
+            <span className="schedk">마지막 수집</span>
+            {lastCollectLabel(last) ?? "없음"}
+          </div>
+        </div>
+
+        {/* 화면에 일정만 적어두고 실제로는 안 도는 상태를 사용자가 모르면 안 된다.
+            마지막 수집이 8일을 넘겼다면 크론이 없거나 실패하고 있는 것이다. */}
+        {collectLooksStale(last) && (
+          <p className="warn">
+            마지막 수집이 일주일을 넘었습니다. 자동 수집이 아직 등록되지 않았거나 실패하고 있을 수 있습니다.
+          </p>
+        )}
       </section>
 
       <section className="mysec">
