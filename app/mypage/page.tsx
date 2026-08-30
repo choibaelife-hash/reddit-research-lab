@@ -1,20 +1,31 @@
 import Link from "next/link";
-import { pool } from "@/lib/db";
 import { logout } from "@/app/login/actions";
 import { switchWorkspace } from "@/app/board/switch";
-import { currentUserId, myWorkspaces, currentWorkspace, myRuns } from "@/lib/workspace";
+import {
+  me, myWorkspaces, currentWorkspace, runsByWorkspace, lastRunAt, weekLabel, PLANS,
+  type Run,
+} from "@/lib/workspace";
 import { addWorkspace, renameWorkspace, savePerspective } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+// 마이페이지는 '설정 화면'이 아니라 '내 자료 허브'다.
+// 워크스페이스(상위) 안에 주차(하위)가 들어 있는 계층을 그대로 보여준다.
+// 실행 기록을 하나의 긴 표로 두면 워크스페이스가 여러 개일 때 무엇이 누구 것인지 사라진다.
+
+/** 한 워크스페이스의 실행들을 주차로 묶는다. 같은 주에 레딧 1줄 + 유튜브 1줄이 들어온다. */
+function byWeek(runs: Run[]): [string, Run[]][] {
+  const m = new Map<string, Run[]>();
+  for (const r of runs) m.set(r.week, [...(m.get(r.week) ?? []), r]);
+  return [...m.entries()];
+}
+
 export default async function MyPage() {
-  const uid = await currentUserId();
-  const [spaces, here, runs] = await Promise.all([
-    myWorkspaces(), currentWorkspace(), myRuns(),
+  const [who, spaces, here, runsMap, last] = await Promise.all([
+    me(), myWorkspaces(), currentWorkspace(), runsByWorkspace(), lastRunAt(),
   ]);
-  const { rows: [me] } = await pool.query<{ email: string; created_at: string }>(
-    `select email, created_at::date::text as created_at from users where id = $1`, [uid]
-  );
+  const plan = PLANS[who?.plan ?? "pro"];
+  const full = spaces.length >= plan.workspaces;
 
   return (
     <div className="bwrap">
@@ -24,102 +35,98 @@ export default async function MyPage() {
           <span className="nv on">마이페이지</span>
         </div>
         <div className="navmeta">
-          {me?.email}
-          <form action={logout} style={{ display: "inline" }}>
-            <button type="submit" className="logout">로그아웃</button>
+          <span className="crumb"><b className="crumbws">{who?.email}</b></span>
+          <form action={logout}>
+            <button type="submit" className="nv">로그아웃</button>
           </form>
         </div>
       </nav>
 
       <section className="mysec">
-        <h2>내 워크스페이스</h2>
-        <table className="mytable">
-          <thead><tr><th>이름</th><th>보는 관점</th><th></th></tr></thead>
-          <tbody>
-            {spaces.map((w) => (
-              <tr key={w.id} className={w.id === here?.id ? "on" : ""}>
-                <td>
-                  <form action={renameWorkspace} className="inlineform">
-                    <input type="hidden" name="id" value={w.id} />
-                    <input name="name" defaultValue={w.name} />
-                    <button type="submit">이름 저장</button>
-                  </form>
-                </td>
-                <td>
-                  <form action={savePerspective} className="inlineform">
-                    <input type="hidden" name="id" value={w.id} />
-                    <input
-                      name="perspective"
-                      defaultValue={w.perspective ?? ""}
-                      placeholder="나는 서울에서 K-뷰티 제품·시술을 다룬다"
-                    />
-                    <button type="submit">저장</button>
-                  </form>
-                </td>
-                <td>
-                  {w.id === here?.id ? (
-                    <b>보는 중</b>
-                  ) : (
-                    <form action={switchWorkspace} className="inlineform">
-                      <input type="hidden" name="ws" value={w.id} />
-                      <button type="submit">이걸로 보기</button>
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <form action={addWorkspace} className="inlineform">
-          <input name="name" placeholder="새 워크스페이스 이름" required />
-          <button type="submit">추가</button>
-        </form>
-        <p className="mynote">
-          '보는 관점'은 지금은 메모다. 앞으로 점수 계산에서 '한국 관련도'를 대신할 문장이다.
+        <h2>구독</h2>
+        <p>
+          <b>{plan.label} 요금제</b> · 워크스페이스 {spaces.length} / {plan.workspaces} 사용
+        </p>
+        <p className="mynote">마지막 수집: {last ? last.slice(0, 16).replace("T", " ") : "없음"}</p>
+        {/* 크론이 아직 Railway에 등록되지 않았다. "매주 월요일 6시" 같은 걸 써두면
+            실제로는 안 도는데 도는 것처럼 보여 거짓말이 된다. 사실대로 적는다. */}
+        <p className="warn">
+          자동 수집이 아직 등록되지 않았습니다. 지금은 사람이 직접 돌려야 새 주차가 생깁니다.
         </p>
       </section>
 
       <section className="mysec">
-        <h2>실행 기록 — {here?.name}</h2>
-        <table className="mytable">
-          <thead>
-            <tr><th>주</th><th>종류</th><th>상태</th><th>결과</th><th>끝난 시각</th><th></th></tr>
-          </thead>
-          <tbody>
-            {runs.map((r) => (
-              <tr key={r.id}>
-                <td>{r.week}</td>
-                <td>{r.kind === "reddit" ? "레딧" : "유튜브"}</td>
-                <td className={`st ${r.status}`}>
-                  {r.status === "done" ? "완료" : r.status === "failed" ? "실패" : "진행 중"}
-                </td>
-                <td>
-                  {r.kind === "reddit"
-                    ? `글 ${r.stats?.posts ?? 0}건 · 카드 ${r.stats?.cards ?? 0}장`
-                    : `키워드 ${r.stats?.keywords ?? 0} · 영상 ${r.stats?.videos ?? 0}편 · 할당량 ${r.stats?.quotaPct ?? 0}%`}
-                  {r.stats?.note && <div className="mynote">{r.stats.note}</div>}
-                  {r.error && <div className="myerr">{r.error}</div>}
-                </td>
-                <td>{r.finished_at?.slice(0, 16) ?? "—"}</td>
-                <td>
-                  <Link href={r.kind === "video" ? `/board?tab=video&week=${r.week}` : `/board?week=${r.week}`}>
-                    보기 →
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {runs.length === 0 && (
-              <tr><td colSpan={6}>아직 실행 기록이 없습니다.</td></tr>
-            )}
-          </tbody>
-        </table>
+        <h2>워크스페이스</h2>
+
+        {spaces.map((w) => {
+          const weeks = byWeek(runsMap.get(w.id) ?? []);
+          return (
+            <div key={w.id} className={`wscard${w.id === here?.id ? " on" : ""}`}>
+              <div className="wshead">
+                <form action={renameWorkspace} className="inlineform">
+                  <input type="hidden" name="id" value={w.id} />
+                  <input name="name" defaultValue={w.name} />
+                  <button type="submit">이름 저장</button>
+                </form>
+                {w.id === here?.id ? (
+                  <span className="wknow">보는 중</span>
+                ) : (
+                  <form action={switchWorkspace} className="inlineform">
+                    <input type="hidden" name="ws" value={w.id} />
+                    <button type="submit">이걸로 보기</button>
+                  </form>
+                )}
+              </div>
+
+              <form action={savePerspective} className="inlineform">
+                <input type="hidden" name="id" value={w.id} />
+                <input name="perspective" defaultValue={w.perspective ?? ""}
+                       placeholder="나는 서울에서 K-뷰티 제품·시술을 다룬다" />
+                <button type="submit">관점 저장</button>
+              </form>
+
+              <div className="wklist">
+                {weeks.length === 0 && <p className="mynote">아직 수집된 주가 없습니다.</p>}
+                {weeks.map(([week, rs]) => {
+                  const reddit = rs.find((r) => r.kind === "reddit");
+                  const video = rs.find((r) => r.kind === "video");
+                  const failed = rs.find((r) => r.status === "failed");
+                  return (
+                    <div key={week} className="wkrow">
+                      <span className="wkname">{weekLabel(week)}</span>
+                      <span className="mdate">{week}</span>
+                      {reddit && <span>글 {reddit.stats?.posts ?? 0}건 · 카드 {reddit.stats?.cards ?? 0}장</span>}
+                      {video && <span>키워드 {video.stats?.keywords ?? 0} · 영상 {video.stats?.videos ?? 0}편</span>}
+                      {failed && <span className="myerr">{failed.error ?? "실패"}</span>}
+                      {rs[0]?.stats?.note && <span className="mynote">{rs[0].stats.note}</span>}
+                      <Link href={`/board?week=${week}`} className="wkgo">보기 →</Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {full ? (
+          <p className="mynote">
+            {plan.label} 요금제는 워크스페이스 {plan.workspaces}개까지입니다.
+          </p>
+        ) : (
+          <form action={addWorkspace} className="inlineform">
+            <input name="name" placeholder="새 워크스페이스 이름" required />
+            <button type="submit">추가</button>
+          </form>
+        )}
+        <p className="mynote">
+          &apos;관점&apos;은 지금은 메모입니다. 앞으로 점수 계산에서 &apos;한국 관련도&apos;를 대신할 문장입니다.
+        </p>
       </section>
 
       <section className="mysec">
         <h2>계정</h2>
-        <p>이메일 <b>{me?.email}</b> · 가입 {me?.created_at}</p>
-        <p className="mynote">비밀번호 변경은 다음 단계에서 붙인다.</p>
+        <p>이메일 <b>{who?.email}</b> · 가입 {who?.created_at}</p>
+        <p className="mynote">비밀번호 변경 화면은 아직 없습니다. 지금은 npm run seed 로 바꿉니다.</p>
       </section>
     </div>
   );

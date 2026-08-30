@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
 import { VideoTab } from "@/components/video/VideoTab";
-import { currentRun, myWorkspaces, currentWorkspace, myRuns } from "@/lib/workspace";
+import { currentRun, myWorkspaces, currentWorkspace, myRuns, me, weekLabel, PLANS } from "@/lib/workspace";
 import { switchWorkspace } from "./switch";
 import {
   SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
@@ -36,9 +36,10 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   // bigserial은 1부터 시작하므로 0은 어떤 행과도 안 맞는다.
   const runId = run?.id ?? "0";
 
-  const [spaces, here, runs] = await Promise.all([
-    myWorkspaces(), currentWorkspace(), myRuns("reddit"),
+  const [spaces, here, runs, who] = await Promise.all([
+    myWorkspaces(), currentWorkspace(), myRuns("reddit"), me(),
   ]);
+  const plan = PLANS[who?.plan ?? "pro"];
 
   const [stats, cards, areas] = await Promise.all([
     getStats(runId), getCards(runId), getAreas(runId),
@@ -58,6 +59,47 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   return (
     <div className="bwrap">
       <nav className="bnav">
+        {/* 우측 상단 계정 영역.
+            드롭다운은 <details>로 만든다 — 자바스크립트 없이 되고 서버 컴포넌트로 남는다.
+            바깥을 눌러도 안 닫히는 건 <details>의 한계다. 그걸 고치자고
+            클라이언트 컴포넌트를 하나 더 만들 만한 일은 아니다. */}
+        <div className="navtop">
+          <details className="menu">
+            <summary>{here?.name ?? "워크스페이스"}</summary>
+            <div className="menupanel">
+              {spaces.map((w) =>
+                w.id === here?.id ? (
+                  <span key={w.id} className="mrow on">✓ {w.name}</span>
+                ) : (
+                  <form key={w.id} action={switchWorkspace}>
+                    <input type="hidden" name="ws" value={w.id} />
+                    <button type="submit" className="mrow">{w.name}</button>
+                  </form>
+                )
+              )}
+              <div className="mdiv" />
+              <Link href="/mypage" className="mrow">워크스페이스 관리</Link>
+            </div>
+          </details>
+
+          <details className="menu">
+            <summary>{who?.email.split("@")[0] ?? "계정"}</summary>
+            <div className="menupanel">
+              <div className="mhead">
+                {who?.email}
+                <div className="mplan">
+                  {plan.label} 요금제 · 워크스페이스 {spaces.length} / {plan.workspaces}
+                </div>
+              </div>
+              <div className="mdiv" />
+              <Link href="/mypage" className="mrow">마이페이지</Link>
+              <form action={logout}>
+                <button type="submit" className="mrow">로그아웃</button>
+              </form>
+            </div>
+          </details>
+        </div>
+
         <div className="nvs">
           {TABS.map((t) => (
             <Link key={t.k} href={href({ tab: t.k, area: undefined, sub: undefined })}
@@ -72,40 +114,29 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
             <span key={a.area} className="nseg" style={{ flex: a.n }} title={`${a.area} ${a.n}건`} />
           ))}
         </div>
+        {/* 계층을 한 줄로 드러낸다: 워크스페이스(상위) › 주차(하위).
+            이 둘이 탭·요약과 같은 줄에 뭉쳐 있으면 무엇이 무엇의 아래인지 안 보인다. */}
         <div className="navmeta">
-          <form action={switchWorkspace} className="wspick">
-            <select name="ws" defaultValue={here?.id ?? ""}>
-              {spaces.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-            <button type="submit">전환</button>
-          </form>
-
-          {/* 주차는 링크 목록으로 고른다.
-              select로 하면 onChange를 붙일 클라이언트 컴포넌트가 하나 더 필요하다. */}
-          <span className="wklinks">
-            {runs.length === 0 && <span className="wk">기록 없음</span>}
-            {runs.slice(0, 6).map((r) => (
-              <Link
-                key={r.id}
-                href={href({ week: r.week })}
-                className={`wk${(sp.week ?? runs[0]?.week) === r.week ? " on" : ""}`}
-                scroll={false}
-              >
-                {r.week.slice(5).replace("-", "/")}
-              </Link>
-            ))}
+          <span className="crumb">
+            <b className="crumbws">{here?.name ?? "—"}</b>
+            <span className="crumbsep">›</span>
+            <details className="menu wkmenu">
+              <summary>{run ? weekLabel(run.week) : "기록 없음"}</summary>
+              <div className="menupanel">
+                {runs.length === 0 && <span className="mrow dim">아직 수집된 주가 없습니다.</span>}
+                {runs.map((r) => (
+                  <Link key={r.id} href={href({ week: r.week })} scroll={false}
+                        className={`mrow${r.week === run?.week ? " on" : ""}`}>
+                    {weekLabel(r.week)} <span className="mdate">{r.week}</span>
+                  </Link>
+                ))}
+              </div>
+            </details>
           </span>
-
-          <Link href="/mypage" className="mypagelink">마이페이지</Link>
-
-          레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
-          평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
-
-          <form action={logout} style={{ display: "inline" }}>
-            <button type="submit" className="logout">로그아웃</button>
-          </form>
+          <span className="navsum">
+            레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
+            평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
+          </span>
         </div>
       </nav>
 
