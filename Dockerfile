@@ -34,7 +34,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 # 스키마 적용(npm run schema)에 필요하다. standalone 산출물에는 안 들어간다.
 COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/schema.sql /app/schema-video.sql ./
+COPY --from=builder /app/schema.sql /app/schema-video.sql /app/schema-saas.sql ./
 
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0

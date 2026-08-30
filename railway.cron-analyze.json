@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "_comment": "크론 서비스 'analyze' 설정. Railway 서비스 Settings의 'Config as code' 경로를 이 파일로 지정한다. 일정을 바꿀 때는 docs/06-DEPLOY-RAILWAY.md 3장과 lib/workspace.ts의 COLLECT_UTC_HOUR도 함께 고칠 것 — 어긋나면 마이페이지가 거짓 일정을 보여준다.",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "node scripts/cron.mjs analyze",
+    "cronSchedule": "0 12 * * 1",
+    "_comment": "한국 월요일 21:00 (UTC 0 12 * * 1). restartPolicy가 NEVER인 이유 — 크론은 일을 마치면 컨테이너가 죽는 게 정상이다. ON_FAILURE면 끝날 때마다 다시 살아나 무한히 돈다. healthcheck도 없다: HTTP를 서비스하지 않는다.",
+    "restartPolicyType": "NEVER"
+  }
+}

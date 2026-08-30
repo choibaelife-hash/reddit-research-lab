@@ -120,7 +120,22 @@ JSON 키 구성이 같아 화면·종합 단계는 손대지 않았다.
 
 ## 3. 크론 일정
 
-Vercel의 `vercel.json` crons는 Railway가 읽지 않는다. Railway 대시보드에서 서비스별 cron으로 등록한다.
+Vercel의 `vercel.json` crons는 Railway가 읽지 않는다. Railway는 **서비스마다 별도 cron**으로 등록한다.
+
+일정과 실행 명령은 저장소에 파일로 넣어 뒀다(config as code). 대시보드에서 손으로 입력하면
+어디에 뭐가 적혀 있는지 흩어져 다음 사람이 못 찾는다.
+
+| 서비스 | 설정 파일 |
+|---|---|
+| `cron-reddit` | `railway.cron-reddit.json` |
+| `cron-video` | `railway.cron-video.json` |
+| `cron-analyze` | `railway.cron-analyze.json` |
+
+**사람이 대시보드에서 할 일은 두 가지뿐이다.** 서비스를 만들고, Settings의 *Config as code* 경로를
+위 파일로 지정한다. 나머지(실행 명령·일정·재시작 정책)는 파일이 정한다.
+
+`restartPolicyType`이 `NEVER`인 이유: 크론은 일을 마치면 컨테이너가 죽는 게 정상이다.
+`ON_FAILURE`로 두면 끝날 때마다 다시 살아나 무한히 돈다 — LLM 비용과 유튜브 할당량이 계속 샌다.
 
 | 작업 | 명령 | 일정(UTC) | 한국 시간 | 비고 |
 |---|---|---|---|---|
