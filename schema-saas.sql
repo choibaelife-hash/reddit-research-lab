@@ -79,3 +79,27 @@ do $$ begin
   alter table users add constraint users_plan_check check (plan in ('pro','team'));
 exception when duplicate_object then null;
 end $$;
+
+-- ══════════════════════════════════════════════════════════
+-- 수집 일정 (2026-08-30 추가)
+-- ══════════════════════════════════════════════════════════
+--
+-- 처음에는 Railway 크론 3개에 요일·시각을 박아 넣었다. 고객이 1명일 때만 되는 방식이다.
+-- 고객이 100명이면 Railway에 크론 100개를 만들어야 하고, 고객이 스스로 시각을 바꿀 수도 없다.
+--
+-- 그래서 일정을 **데이터**로 옮긴다.
+--   Railway 크론은 영원히 1개다 — 매시간 깨어나 "지금 돌 차례인 워크스페이스"를 DB에 물어본다.
+--   고객이 늘어도 늘어나는 건 이 표의 줄 하나뿐이다.
+--
+-- lib/pipeline.ts가 "지금 할 단계가 뭔지" 스스로 찾던 것과 같은 방식을 한 겹 위에 얹은 것이다.
+alter table workspaces add column if not exists schedule_dow smallint not null default 1;
+alter table workspaces add column if not exists schedule_hour smallint not null default 18;
+-- 미국 고객이 생기면 "월요일 18시"가 그쪽 18시여야 한다. IANA 이름을 그대로 Postgres에 넘긴다.
+alter table workspaces add column if not exists timezone text not null default 'Asia/Seoul';
+
+do $$ begin
+  alter table workspaces add constraint workspaces_dow_check  check (schedule_dow between 0 and 6);
+  exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table workspaces add constraint workspaces_hour_check check (schedule_hour between 0 and 23);
+  exception when duplicate_object then null; end $$;

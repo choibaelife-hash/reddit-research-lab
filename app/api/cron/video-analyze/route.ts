@@ -3,7 +3,8 @@ import { denyCron } from "@/lib/cron-auth";
 import { pool } from "@/lib/db";
 import { analyzeVideo } from "@/lib/video/analyze";
 import { synthesizeKeyword } from "@/lib/video/synthesize";
-import { mondayOf } from "@/lib/video/keywords";
+import { weekOf } from "@/lib/schedule";
+import { defaultWorkspaceId } from "@/lib/runs";
 
 // 2단계 진입점. 1단계(/api/cron/video)와 분리한다 — 1단계는 Vercel에서 계속 돌지만
 // 2단계는 시간이 길어 Railway로 가야 한다(03-VIDEO.md 7장).
@@ -12,7 +13,9 @@ export async function GET(req: NextRequest) {
   const denied = denyCron(req);
   if (denied) return denied;
 
-  const week = req.nextUrl.searchParams.get("week") ?? mondayOf();
+  // 주차는 워크스페이스 타임존 기준이다. ?ws=로 지정하지 않으면 첫 번째 워크스페이스.
+  const ws = req.nextUrl.searchParams.get("ws") ?? (await defaultWorkspaceId());
+  const week = req.nextUrl.searchParams.get("week") ?? (await weekOf(ws));
   // 한 번에 몇 편까지 볼지. 로컬 실험에서 조금씩 돌려보려고 열어둔다.
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? 5);
   const redo = req.nextUrl.searchParams.get("redo") === "1";

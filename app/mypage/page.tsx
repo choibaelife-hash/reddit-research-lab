@@ -3,10 +3,11 @@ import { logout } from "@/app/login/actions";
 import { switchWorkspace } from "@/app/board/switch";
 import {
   me, myWorkspaces, currentWorkspace, runsByWorkspace, lastRunAt, weekLabel, PLANS,
-  COLLECT_LABEL, nextCollectLabel, lastCollectLabel, collectLooksStale,
+  lastCollectLabel, collectLooksStale,
   type Run,
 } from "@/lib/workspace";
-import { addWorkspace, renameWorkspace, savePerspective } from "./actions";
+import { scheduleLabel, nextRunLabel, DOW_KO } from "@/lib/schedule";
+import { addWorkspace, renameWorkspace, savePerspective, saveSchedule } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,24 +50,9 @@ export default async function MyPage() {
           <b>{plan.label} 요금제</b> · 워크스페이스 {spaces.length} / {plan.workspaces} 사용
         </p>
 
-        <div className="sched">
-          <div className="schedrow">
-            <span className="schedk">수집 주기</span>
-            <b>{COLLECT_LABEL}</b>
-            <span className="mynote">미국(하와이 제외)에서 일요일이 끝난 뒤에 모읍니다</span>
-          </div>
-          <div className="schedrow">
-            <span className="schedk">다음 수집</span>
-            <b>{nextCollectLabel()}</b>
-          </div>
-          <div className="schedrow">
-            <span className="schedk">마지막 수집</span>
-            {lastCollectLabel(last) ?? "없음"}
-          </div>
-        </div>
+        <p className="mynote">마지막 수집: {lastCollectLabel(last) ?? "없음"}</p>
+        {/* 수집 일정은 워크스페이스마다 다르다. 여기가 아니라 각 워크스페이스 카드에 있다. */}
 
-        {/* 화면에 일정만 적어두고 실제로는 안 도는 상태를 사용자가 모르면 안 된다.
-            마지막 수집이 8일을 넘겼다면 크론이 없거나 실패하고 있는 것이다. */}
         {collectLooksStale(last) && (
           <p className="warn">
             마지막 수집이 일주일을 넘었습니다. 자동 수집이 아직 등록되지 않았거나 실패하고 있을 수 있습니다.
@@ -103,6 +89,34 @@ export default async function MyPage() {
                        placeholder="나는 서울에서 K-뷰티 제품·시술을 다룬다" />
                 <button type="submit">관점 저장</button>
               </form>
+
+              {/* 수집 일정. 코드가 아니라 DB에 있어서 고객이 직접 바꾼다.
+                  Railway 크론은 매시간 깨어나 "지금이 이 시각인 워크스페이스"만 골라 돌린다. */}
+              <div className="sched">
+                <div className="schedrow">
+                  <span className="schedk">수집 일정</span>
+                  <form action={saveSchedule} className="inlineform">
+                    <input type="hidden" name="id" value={w.id} />
+                    <span>매주</span>
+                    <select name="dow" defaultValue={w.schedule_dow}>
+                      {DOW_KO.map((d, i) => <option key={i} value={i}>{d}요일</option>)}
+                    </select>
+                    <select name="hour" defaultValue={w.schedule_hour}>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {h < 12 ? "오전" : "오후"} {h % 12 === 0 ? 12 : h % 12}시
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit">저장</button>
+                  </form>
+                </div>
+                <div className="schedrow">
+                  <span className="schedk">다음 수집</span>
+                  <b>{nextRunLabel({ dow: w.schedule_dow, hour: w.schedule_hour, timezone: w.timezone })}</b>
+                  <span className="mynote">{w.timezone}</span>
+                </div>
+              </div>
 
               <div className="wklist">
                 {weeks.length === 0 && <p className="mynote">아직 수집된 주가 없습니다.</p>}

@@ -5,7 +5,11 @@ import { SESSION_COOKIE, WS_COOKIE, verifySession } from "@/lib/session.mjs";
 // 화면이 "지금 누구의, 어느 워크스페이스의, 어느 주 데이터를 보고 있나"를 정하는 곳.
 // 조회 함수(lib/board-data.ts)는 여기서 받은 실행번호로 거르기만 한다.
 
-export type Workspace = { id: string; name: string; perspective: string | null };
+export type Workspace = {
+  id: string; name: string; perspective: string | null;
+  // 수집 일정은 코드가 아니라 여기 있다. 고객이 마이페이지에서 바꾼다(lib/schedule.ts).
+  schedule_dow: number; schedule_hour: number; timezone: string;
+};
 
 export type Run = {
   id: string; week: string; kind: string; status: string;
@@ -47,7 +51,8 @@ export async function myWorkspaces(): Promise<Workspace[]> {
   const uid = await currentUserId();
   if (!uid) return [];
   return (await pool.query<Workspace>(
-    `select id, name, perspective from workspaces where user_id = $1 order by created_at`,
+    `select id, name, perspective, schedule_dow, schedule_hour, timezone
+       from workspaces where user_id = $1 order by created_at`,
     [uid]
   )).rows;
 }
@@ -142,21 +147,7 @@ export async function lastRunAt(): Promise<string | null> {
   return rows[0]?.at ?? null;
 }
 
-// ── 자동 수집 일정 ────────────────────────────────────────
-//
-// 크론은 Railway에 UTC로 등록한다. 여기 값과 docs/06-DEPLOY-RAILWAY.md 3장이 어긋나면
-// 화면이 거짓말을 하게 되므로, 일정을 바꿀 때 두 곳을 함께 고친다.
-//
-//   레딧    0 9 * * 1   (UTC)  = 한국 월요일 18:00
-//   영상 1  0 11 * * 1         = 월요일 20:00
-//   영상 2  0 12 * * 1         = 월요일 21:00
-//
-// 월요일 저녁인 이유: 레딧 top?t=week는 달력 주가 아니라 '지금부터 거슬러 7일'이라
-// 매주 같은 시각에 불러야 창이 어긋나지 않고, 주말 글이 업보트를 다 받은 뒤여야
-// top 순위(=화제성 점수)가 제대로 나온다.
-const COLLECT_UTC_HOUR = 9;   // 월요일 09:00 UTC
-export const COLLECT_LABEL = "매주 월요일 오후 6시";
-
+// 시각 표기 도우미. 수집 일정 자체는 DB에 있고 lib/schedule.ts가 다룬다.
 const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
 /** UTC 시각을 한국 시간 표기로. "8월 31일(월) 오후 6시" */
@@ -168,16 +159,6 @@ function kstLabel(d: Date): string {
   const min = k.getUTCMinutes();
   return `${k.getUTCMonth() + 1}월 ${k.getUTCDate()}일(${DAY_KO[k.getUTCDay()]}) ` +
          `${ampm} ${h12}시${min ? ` ${min}분` : ""}`;
-}
-
-/** 다음 자동 수집 시각. 화면에 "다음 수집: …"으로 보여준다. */
-export function nextCollectLabel(now = new Date()): string {
-  const d = new Date(Date.UTC(
-    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), COLLECT_UTC_HOUR, 0, 0
-  ));
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));  // 이번 주 월요일
-  while (d <= now) d.setUTCDate(d.getUTCDate() + 7);
-  return kstLabel(d);
 }
 
 /** 마지막 수집 시각을 한국 시간 표기로. 없으면 null. */

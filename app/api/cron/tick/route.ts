@@ -17,5 +17,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ next: await nextStep() });
   }
 
-  return NextResponse.json(await tick());
+  // ?ws=<워크스페이스id> — 크론이 돌 차례인 워크스페이스를 지정한다. 없으면 첫 번째.
+  const ws = req.nextUrl.searchParams.get("ws") ?? undefined;
+  return NextResponse.json(await tick(ws));
 }

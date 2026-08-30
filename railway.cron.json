@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "_comment": "크론 서비스 설정. Railway 서비스 Settings의 'Config as code' 경로를 이 파일로 지정한다. 이 서비스는 고객이 몇 명이든 하나뿐이다 — 매시간 깨어나 '지금 돌 차례인 워크스페이스'를 DB에 물어보고 해당하는 것만 돌린다. 요일·시각은 여기가 아니라 DB(workspaces.schedule_dow/hour/timezone)에 있고, 고객이 마이페이지에서 직접 바꾼다.",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "node scripts/cron.mjs due",
+    "cronSchedule": "0 * * * *",
+    "_comment": "매시간 정각. restartPolicy가 NEVER인 이유 — 크론은 일을 마치면 컨테이너가 죽는 게 정상이다. ON_FAILURE면 끝날 때마다 다시 살아나 무한히 돈다.",
+    "restartPolicyType": "NEVER"
+  }
+}

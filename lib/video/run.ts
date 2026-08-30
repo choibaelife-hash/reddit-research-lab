@@ -2,15 +2,18 @@ import { pickKeywords, saveKeywords, mondayOf } from "./keywords";
 import { searchKeyword, pickTop, saveCandidates } from "./youtube";
 import { getQuotes, refineSearchQuery } from "./query";
 import { openRun, closeRun, tagRun, defaultWorkspaceId } from "@/lib/runs";
+import { weekOf } from "@/lib/schedule";
 
 // 주 1회 실행. 레딧 파이프라인(lib/pipeline.ts)과 완전히 분리돼 있다.
 // 여기가 터져도 레딧 수집·분류·카드는 그대로 돈다.
 
-export async function runVideo(opts: { week?: string; limit?: number } = {}) {
-  const week = opts.week ?? mondayOf();
+export async function runVideo(opts: { week?: string; limit?: number; workspaceId?: string } = {}) {
+  // 주차는 워크스페이스의 타임존 기준이다(lib/schedule.ts). 서버 UTC로 계산하면 어긋난다.
+  const wsId = opts.workspaceId ?? (await defaultWorkspaceId());
+  const week = opts.week ?? (await weekOf(wsId));
   const limit = opts.limit ?? 3;
 
-  const runId = await openRun(await defaultWorkspaceId(), "video", week);
+  const runId = await openRun(wsId, "video", week);
 
   const picks = await pickKeywords(week, limit);
   if (!picks.length) {

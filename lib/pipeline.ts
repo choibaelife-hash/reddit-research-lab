@@ -8,7 +8,7 @@ import { extractCommentEntities } from "@/lib/analyzers/comment-entities";
 import { buildCards } from "@/lib/analyzers/cards";
 import { rescoreAll } from "@/lib/analyzers/score";
 import { openRun, closeRun, tagRun, defaultWorkspaceId } from "@/lib/runs";
-import { mondayOf } from "@/lib/video/keywords";
+import { weekOf } from "@/lib/schedule";
 
 // 파이프라인 상태 머신.
 //
@@ -178,13 +178,22 @@ export type TickResult = {
   error?: string;
 };
 
-/** 시간이 허락하는 동안 다음 단계들을 이어서 실행한다. */
-export async function tick(): Promise<TickResult> {
+/**
+ * 시간이 허락하는 동안 다음 단계들을 이어서 실행한다.
+ *
+ * 워크스페이스를 인자로 받는다 — 크론이 "지금 돌 차례인 워크스페이스"를 골라 넘긴다.
+ * 안 넘기면 첫 번째를 쓴다(수동 실행·기존 라우트 호환).
+ *
+ * 주차는 그 워크스페이스의 타임존으로 계산한다. 서버 UTC로 계산하면
+ * 한국 월요일 새벽이 UTC로는 일요일이라 지난 주에 들어간다.
+ */
+export async function tick(workspaceId?: string): Promise<TickResult> {
   const startedAt = Date.now();
   const ran: { step: Step; result: any }[] = [];
 
+  const wsId = workspaceId ?? (await defaultWorkspaceId());
   // 이번 주 실행 줄을 연다. 크론이 여러 번 깨어나도 같은 줄에 이어 쓴다.
-  const runId = await openRun(await defaultWorkspaceId(), "reddit", mondayOf());
+  const runId = await openRun(wsId, "reddit", await weekOf(wsId));
 
   /** 루프를 어떻게 빠져나가든 기록을 남기고 결과에 번호를 단다. */
   const finish = async (r: TickResult): Promise<TickResult> => {
