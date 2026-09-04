@@ -106,22 +106,20 @@ export async function nextStep(): Promise<Step> {
   );
   if (noCommentEnts.n > 0) return "comment-entities";
 
-  // 7) 카드 — 서브레딧당 3장이 "이미 있는지"를 본다.
+  // 7) 카드 — 이번 주 레딧 수집 이후 아직 카드를 안 만들었으면.
   //
-  // 예전엔 "카드 없는 글 중 상위 3건이 있나"로 셌는데, 그러면 12장을 만든 뒤
-  // 그다음 12장을 또 만들려 든다(24 → 36 → 무한). gpt-4.1이라 매번 돈이 나간다.
-  const needCards = await one<{ n: number }>(
-    `select count(*)::int as n from (
-       select m.raw->>'subreddit' as sub,
-              count(*) filter (where c.mention_id is not null) as have
-         from mentions m
-         join post_analysis a on a.mention_id = m.id
-         left join idea_cards c on c.mention_id = m.id
-        group by 1
-       having count(*) filter (where c.mention_id is not null) < ${CARDS_PER_SUB}
-     ) x`
+  // 예전엔 "서브레딧당 카드 누적 총량 < 3"으로 셌는데, 그러면 최초 1주에 12장을 만든 뒤
+  // 누적 총량이 계속 3 이상이라 다음 주부터는 영원히 "필요 없음"이 되어버린다.
+  // 매주 12장이 새로 쌓여야 하는 설계이므로, "이번 주 수집(reddit last_success_at) 이후에
+  // 카드를 만든 적 있는지"로 판단한다 — 매주 리셋되고 다시 12장이 쌓인다.
+  const needCards = await one<{ need: boolean }>(
+    `select exists(
+       select 1 from source_status
+        where source = 'reddit'
+          and last_success_at > coalesce((select max(updated_at) from idea_cards), '-infinity')
+     ) as need`
   );
-  if (needCards.n > 0) return "cards";
+  if (needCards.need) return "cards";
 
   // 8) 점수 재계산 — 새 댓글·엔티티가 들어왔으면 가산점이 바뀐다
   const stale = await one<{ n: number }>(
