@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "node server.js",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "_comment": "healthcheckPath를 /login으로 둔다. proxy.ts가 /를 /login으로 307 리다이렉트하므로 /로 검사하면 실패로 잡힐 수 있다.",
+    "healthcheckPath": "/login",
+    "healthcheckTimeout": 30
+  }
+}

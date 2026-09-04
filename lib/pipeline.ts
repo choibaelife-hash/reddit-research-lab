@@ -7,6 +7,8 @@ import { extractRelevance } from "@/lib/analyzers/korea-relevance";
 import { extractCommentEntities } from "@/lib/analyzers/comment-entities";
 import { buildCards } from "@/lib/analyzers/cards";
 import { rescoreAll } from "@/lib/analyzers/score";
+import { openRun, closeRun, tagRun, defaultWorkspaceId } from "@/lib/runs";
+import { weekOf } from "@/lib/schedule";
 
 // 파이프라인 상태 머신.
 //
@@ -174,19 +176,49 @@ export type TickResult = {
   error?: string;
 };
 
-/** 시간이 허락하는 동안 다음 단계들을 이어서 실행한다. */
-export async function tick(): Promise<TickResult> {
+/**
+ * 시간이 허락하는 동안 다음 단계들을 이어서 실행한다.
+ *
+ * 워크스페이스를 인자로 받는다 — 크론이 "지금 돌 차례인 워크스페이스"를 골라 넘긴다.
+ * 안 넘기면 첫 번째를 쓴다(수동 실행·기존 라우트 호환).
+ *
+ * 주차는 그 워크스페이스의 타임존으로 계산한다. 서버 UTC로 계산하면
+ * 한국 월요일 새벽이 UTC로는 일요일이라 지난 주에 들어간다.
+ */
+export async function tick(workspaceId?: string): Promise<TickResult> {
   const startedAt = Date.now();
   const ran: { step: Step; result: any }[] = [];
+
+  const wsId = workspaceId ?? (await defaultWorkspaceId());
+  // 이번 주 실행 줄을 연다. 크론이 여러 번 깨어나도 같은 줄에 이어 쓴다.
+  const runId = await openRun(wsId, "reddit", await weekOf(wsId));
+
+  /** 루프를 어떻게 빠져나가든 기록을 남기고 결과에 번호를 단다. */
+  const finish = async (r: TickResult): Promise<TickResult> => {
+    await tagRun(runId, ["post_analysis", "idea_cards"]);
+    const { rows: [n] } = await pool.query<{ posts: number; cards: number }>(
+      `select (select count(*)::int from post_analysis where run_id = $1::bigint) as posts,
+              (select count(*)::int from idea_cards    where run_id = $1::bigint) as cards`,
+      [runId]
+    );
+    await closeRun(
+      runId,
+      r.stoppedBecause === "error" || r.stoppedBecause === "stalled" ? "failed" : "done",
+      { posts: n.posts, cards: n.cards, steps: r.ran.map((x) => x.step), stoppedBecause: r.stoppedBecause },
+      r.error
+    );
+    return r;
+  };
+
   while (true) {
     const step = await nextStep();
     if (step === "idle") {
-      return { ran, stoppedBecause: "idle", elapsedMs: Date.now() - startedAt };
+      return finish({ ran, stoppedBecause: "idle", elapsedMs: Date.now() - startedAt });
     }
     // 이 단계를 끝까지 돌릴 시간이 남았는지 먼저 본다. 없으면 다음 크론에 넘긴다.
     const elapsed = Date.now() - startedAt;
     if (elapsed + STEP_BUDGET_MS[step] > HARD_LIMIT_MS) {
-      return { ran, stoppedBecause: "deadline", elapsedMs: elapsed, nextStep: step };
+      return finish({ ran, stoppedBecause: "deadline", elapsedMs: elapsed, nextStep: step });
     }
     try {
       const result = await runStep(step);
@@ -196,17 +228,17 @@ export async function tick(): Promise<TickResult> {
       // "할 일 있다"는데 아무것도 처리하지 못했다면 조건과 처리 대상이 어긋난 것이다.
       // 다시 물어봐야 같은 답이 나오므로 반복해봐야 의미가 없고, LLM 비용만 샌다.
       if (progressOf(step, result) === 0) {
-        return {
+        return finish({
           ran, stoppedBecause: "stalled", elapsedMs: Date.now() - startedAt, nextStep: step,
           error: `${step}: 할 일이 있다고 판단했는데 0건을 처리했다. ` +
                  `판단 조건과 처리 대상이 어긋났을 가능성이 높다 — 코드를 확인할 것.`,
-        };
+        });
       }
     } catch (err) {
-      return {
+      return finish({
         ran, stoppedBecause: "error", elapsedMs: Date.now() - startedAt,
         error: `${step}: ${err instanceof Error ? err.message : String(err)}`,
-      };
+      });
     }
   }
 }

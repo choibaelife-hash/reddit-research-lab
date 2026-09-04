@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { denyCron } from "@/lib/cron-auth";
 import { tick, nextStep } from "@/lib/pipeline";
 
-export const maxDuration = 300;
-
 export async function GET(req: NextRequest) {
-  // Vercel 크론은 자체 헤더를 붙여 호출한다. 수동 호출은 Bearer로 인증한다.
-  const auth = req.headers.get("authorization");
-  const isVercelCron = req.headers.get("x-vercel-cron") !== null;
-  if (!isVercelCron && auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  // Bearer 토큰만 받는다.
+  //
+  // 예전에는 `x-vercel-cron` 헤더가 있으면 토큰 없이 통과시켰다. Vercel이 그 헤더를
+  // 통제해줬기 때문인데, Railway에는 막아줄 주체가 없어 **누구나 헤더만 붙이면
+  // 파이프라인을 돌릴 수 있는 구멍**이 된다(LLM 비용 + 유튜브 할당량 소모).
+  // 미들웨어도 /api/는 통과시키므로 이 검사가 유일한 방어선이다.
+  const denied = denyCron(req);
+  if (denied) return denied;
 
   // ?peek=1 이면 실행하지 않고 다음 단계만 알려준다 (상태 확인용)
   if (req.nextUrl.searchParams.get("peek") === "1") {
     return NextResponse.json({ next: await nextStep() });
   }
 
-  return NextResponse.json(await tick());
+  // ?ws=<워크스페이스id> — 크론이 돌 차례인 워크스페이스를 지정한다. 없으면 첫 번째.
+  const ws = req.nextUrl.searchParams.get("ws") ?? undefined;
+  return NextResponse.json(await tick(ws));
 }
