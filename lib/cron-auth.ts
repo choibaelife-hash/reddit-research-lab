@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 //
 // `proxy.ts`가 /api/는 그냥 통과시키므로(비밀번호 잠금 대상이 아님)
 // 여기가 뚫리면 누구나 파이프라인을 돌릴 수 있다 — LLM 비용이 나가고
-// 유튜브 하루 할당량이 타버린다.
+// 외부 API 비용과 중복 데이터가 발생한다.
 //
 // 두 가지를 막는다.
 //  ① `CRON_SECRET`이 없으면 전부 거절한다.

@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   //
   // 예전에는 `x-vercel-cron` 헤더가 있으면 토큰 없이 통과시켰다. Vercel이 그 헤더를
   // 통제해줬기 때문인데, Railway에는 막아줄 주체가 없어 **누구나 헤더만 붙이면
-  // 파이프라인을 돌릴 수 있는 구멍**이 된다(LLM 비용 + 유튜브 할당량 소모).
+  // 파이프라인을 돌릴 수 있는 구멍**이 된다(LLM 비용과 중복 실행 발생).
   // 미들웨어도 /api/는 통과시키므로 이 검사가 유일한 방어선이다.
   const denied = denyCron(req);
   if (denied) return denied;

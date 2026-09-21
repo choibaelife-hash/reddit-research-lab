@@ -1,8 +1,8 @@
 -- SaaS 운영 스키마 — 계정 · 워크스페이스 · 주간 실행 기록
 -- 적용: npm run schema
 --
--- schema.sql / schema-video.sql은 "무엇을 수집하고 분석했나"를 담는다.
--- 이 파일은 "누구 것이고 언제 돌린 거냐"만 담는다. 저 둘은 건드리지 않는다.
+-- schema.sql은 "무엇을 수집하고 분석했나"를 담는다.
+-- 이 파일은 "누구 것이고 언제 돌린 거냐"만 담는다. 수집 스키마는 건드리지 않는다.
 --
 -- 핵심 결정(2026-08-30): 결과 테이블에 workspace_id와 week를 따로 붙이지 않는다.
 -- runs 한 줄이 워크스페이스와 주차를 둘 다 들고 있으므로, 결과에는 run_id 하나면 된다.
@@ -44,7 +44,7 @@ create table if not exists runs (
   -- jsonb로 두는 이유: 보여줄 항목이 아직 안 정해졌는데 지금 컬럼으로 못 박으면
   -- 항목이 바뀔 때마다 마이그레이션을 해야 한다. 굳으면 그때 컬럼으로 뺀다.
   --   reddit: {"posts":140,"cards":12,"steps":["classify","cards"]}
-  --   video:  {"keywords":3,"videos":47,"quotaUnits":300,"quotaPct":3}
+  -- 과거 video 실행 기록도 보존할 수 있다.
   stats        jsonb not null default '{}'::jsonb,
   error        text,
   started_at   timestamptz not null default now(),
@@ -59,11 +59,9 @@ create index if not exists runs_ws_idx on runs (workspace_id, week desc);
 -- on delete set null: 실행 기록을 지워도 분석 결과 자체는 남는다.
 alter table post_analysis  add column if not exists run_id bigint references runs(id) on delete set null;
 alter table idea_cards     add column if not exists run_id bigint references runs(id) on delete set null;
-alter table video_keywords add column if not exists run_id bigint references runs(id) on delete set null;
 
 create index if not exists post_analysis_run_idx  on post_analysis (run_id);
 create index if not exists idea_cards_run_idx     on idea_cards (run_id);
-create index if not exists video_keywords_run_idx on video_keywords (run_id);
 
 -- ══════════════════════════════════════════════════════════
 -- 구독 (2026-08-30 추가)

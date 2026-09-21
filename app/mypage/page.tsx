@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // 워크스페이스(상위) 안에 주차(하위)가 들어 있는 계층을 그대로 보여준다.
 // 실행 기록을 하나의 긴 표로 두면 워크스페이스가 여러 개일 때 무엇이 누구 것인지 사라진다.
 
-/** 한 워크스페이스의 실행들을 주차로 묶는다. 같은 주에 레딧 1줄 + 유튜브 1줄이 들어온다. */
+/** 한 워크스페이스의 실행들을 주차로 묶는다. 과거의 다른 종류 실행 기록도 그대로 표시한다. */
 function byWeek(runs: Run[]): [string, Run[]][] {
   const m = new Map<string, Run[]>();
   for (const r of runs) m.set(r.week, [...(m.get(r.week) ?? []), r]);

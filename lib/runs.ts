@@ -22,7 +22,7 @@ export async function defaultWorkspaceId(): Promise<string> {
  */
 export async function openRun(
   workspaceId: string,
-  kind: "reddit" | "video",
+  kind: "reddit",
   week: string
 ): Promise<string> {
   const { rows } = await pool.query<{ id: string }>(
@@ -68,7 +68,7 @@ export async function closeRun(
  *
  * 테이블 이름은 우리 코드 안의 상수만 넘긴다(사용자 입력이 아니다).
  */
-const TAGGABLE = ["post_analysis", "idea_cards", "video_keywords"];
+const TAGGABLE = ["post_analysis", "idea_cards"];
 
 export async function tagRun(runId: string, tables: string[]): Promise<void> {
   for (const t of tables) {
