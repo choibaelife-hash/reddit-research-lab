@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
 import { currentRun, myWorkspaces, currentWorkspace, myRuns, me, weekLabel, PLANS } from "@/lib/workspace";
 import { switchWorkspace } from "./switch";
 import {
-  SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
-  getKeywords, getEntityKinds, getTopEntities, getDemands, getClinicGap,
-  getRssFeeds, getRssItems, getStats,
-} from "@/lib/board-data";
+  getBoardSummary, getBoardCards, getBoardCardSummaries, getBoardStockPage, getBoardStockCounts,
+  getBoardAreaPosts, getBoardAreaTypes, getBoardKeywords, getBoardEntityKinds, getBoardTopEntities,
+  getBoardDemands, getBoardClinicGap, getBoardRssFeeds, getBoardRssItems,
+} from "@/lib/board-cache";
+import { SUB_ORDER, BOARD_PAGE_SIZE } from "@/lib/board-data";
 
 export const dynamic = "force-dynamic";
 
@@ -20,38 +22,49 @@ const TABS = [
   { k: "draft", label: "글감" },
 ] as const;
 
-type SP = { tab?: string; area?: string; sub?: string; week?: string };
+type SP = { tab?: string; area?: string; sub?: string; week?: string; page?: string };
+type BoardHref = (next: Partial<SP>) => string;
+
+function requestedPage(value?: string) {
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
+
+function Pagination({ page, pages, href }: { page: number; pages: number; href: BoardHref }) {
+  if (pages <= 1) return null;
+  return <nav className="sfilter" aria-label="목록 페이지">
+    {page > 1 && <Link className="sf" prefetch={false} href={href({ page: String(page - 1) })}>← 이전 30개</Link>}
+    <span className="sf on" aria-current="page">{page} / {pages} 페이지</span>
+    {page < pages && <Link className="sf" prefetch={false} href={href({ page: String(page + 1) })}>다음 30개 →</Link>}
+  </nav>;
+}
 
 export default async function BoardPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const tab = TABS.some((t) => t.k === sp.tab) ? sp.tab! : "main";
 
   // 화면 전체가 이 실행 하나를 본다. week가 없으면 가장 최근 주.
-  const run = await currentRun("reddit", sp.week);
+  const [run, spaces, here, runs, who] = await Promise.all([
+    currentRun("reddit", sp.week), myWorkspaces(), currentWorkspace(), myRuns("reddit"), me(),
+  ]);
   // 실행이 없으면 존재할 수 없는 번호를 넘긴다.
   // null을 넘기면 조회 함수의 `$1 is null or ...` 조건이 참이 되어 필터가 통째로 꺼지고,
   // 실행 기록이 하나도 없는 새 워크스페이스에 남의 워크스페이스 데이터가 보인다.
   // bigserial은 1부터 시작하므로 0은 어떤 행과도 안 맞는다.
   const runId = run?.id ?? "0";
 
-  const [spaces, here, runs, who] = await Promise.all([
-    myWorkspaces(), currentWorkspace(), myRuns("reddit"), me(),
-  ]);
   const plan = PLANS[who?.plan ?? "pro"];
 
-  const [stats, cards, areas] = await Promise.all([
-    getStats(runId), getCards(runId), getAreas(runId),
-  ]);
-  const saved = cards.filter((c) => c.status === "saved");
+  const { stats, areas } = await getBoardSummary(runId);
   const href = (next: Partial<SP>) => {
     const q = new URLSearchParams();
-    const merged = { tab, area: sp.area, sub: sp.sub, week: sp.week, ...next };
+    const merged = { tab, area: sp.area, sub: sp.sub, week: sp.week, page: sp.page, ...next };
     for (const [k, v] of Object.entries(merged)) if (v) q.set(k, String(v));
     return `/board?${q.toString()}`;
   };
 
   const counts: Record<string, number> = {
-    ideas: cards.length, draft: saved.length,
+    ideas: stats.cards, draft: stats.saved,
   };
 
   return (
@@ -100,7 +113,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
 
         <div className="nvs">
           {TABS.map((t) => (
-            <Link key={t.k} href={href({ tab: t.k, area: undefined, sub: undefined })}
+            <Link key={t.k} href={href({ tab: t.k, area: undefined, sub: undefined, page: undefined })}
                   className={`nv${tab === t.k ? " on" : ""}`} scroll={false}>
               {t.label}
               {counts[t.k] !== undefined && <span className="n">{counts[t.k]}</span>}
@@ -123,7 +136,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
               <div className="menupanel">
                 {runs.length === 0 && <span className="mrow dim">아직 수집된 주가 없습니다.</span>}
                 {runs.map((r) => (
-                  <Link key={r.id} href={href({ week: r.week })} scroll={false}
+                  <Link key={r.id} href={href({ week: r.week, page: undefined })} scroll={false}
                         className={`mrow${r.week === run?.week ? " on" : ""}`}>
                     {weekLabel(r.week)} <span className="mdate">{r.week}</span>
                   </Link>
@@ -133,30 +146,31 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           </span>
           <span className="navsum">
             레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
-            평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
+            평균 가치 {stats.avg_worth} · 확정 <b>{stats.saved}</b>건
           </span>
         </div>
       </nav>
 
-      {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} cards={cards} runId={runId} />}
-      {tab === "ideas" && <IdeasTab cards={cards} />}
-      {tab === "stock" && <StockTab sub={sp.sub} href={href} runId={runId} />}
-      {tab === "rss" && <RssTab />}
-      {tab === "mine" && <MineTab areas={areas} />}
-      {tab === "draft" && <DraftTab cards={saved} />}
+      <Suspense key={`${runId}:${tab}:${sp.area ?? ""}:${sp.sub ?? ""}:${sp.page ?? ""}`}
+                fallback={<section className="block" role="status">내용을 불러오는 중입니다…</section>}>
+        {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} runId={runId} />}
+        {tab === "ideas" && <IdeasTab runId={runId} />}
+        {tab === "stock" && <StockTab sub={sp.sub} page={requestedPage(sp.page)} href={href} runId={runId} />}
+        {tab === "rss" && <RssTab page={requestedPage(sp.page)} href={href} />}
+        {tab === "mine" && <MineTab areas={areas} />}
+        {tab === "draft" && <DraftTab runId={runId} />}
+      </Suspense>
     </div>
   );
 }
 
 /* ───────────────────────── 한눈에 ───────────────────────── */
 
-async function MainTab({ areas, area, href, cards, runId }: any) {
-  const [keywords, entKinds, topEnts] = await Promise.all([
-    getKeywords(), getEntityKinds(), getTopEntities(),
-  ]);
+async function MainTab({ areas, area, href, runId }: any) {
   const selected = area && areas.some((a: any) => a.area === area) ? area : areas[0]?.area;
-  const [areaPosts, areaTypes] = await Promise.all([
-    getAreaPosts(selected, runId), getAreaTypes(selected, runId),
+  const [keywords, entKinds, topEnts, cards, areaPosts, areaTypes] = await Promise.all([
+    getBoardKeywords(), getBoardEntityKinds(), getBoardTopEntities(), getBoardCardSummaries(runId),
+    getBoardAreaPosts(selected, runId), getBoardAreaTypes(selected, runId),
   ]);
 
   const kmax = Math.max(...keywords.map((k: any) => k.total), 1);
@@ -258,7 +272,7 @@ async function MainTab({ areas, area, href, cards, runId }: any) {
                 <div className="blabel">r/{sub}</div>
                 <div className="bcells">
                   {row.map((c: any) => (
-                    <Link key={c.id} href={`/board?tab=ideas#card-${c.id}`}
+                    <Link key={c.id} href={`${href({ tab: "ideas", area: undefined, sub: undefined, page: undefined })}#card-${c.id}`}
                           className={`bcell s${step(c.worth)}${c.status === "saved" ? " done" : ""}`}>
                       <span className="bt">{c.angles?.[c.chosen_angle ?? 0]?.ko ?? c.topic}</span>
                       <span className="bmeta">{c.area} · {c.type}</span>
@@ -302,7 +316,8 @@ const stats0 = (cards: any[]) => 100;
 
 /* ───────────────────────── 쓸 소재 ───────────────────────── */
 
-function IdeasTab({ cards }: { cards: any[] }) {
+async function IdeasTab({ runId }: { runId: string }) {
+  const cards = await getBoardCards(runId, "ideas");
   return (
     <section className="block">
       <p className="eyebrow">콘텐츠 후보</p>
@@ -319,15 +334,23 @@ function IdeasTab({ cards }: { cards: any[] }) {
 
 /* ───────────────────────── 재고 ───────────────────────── */
 
-async function StockTab({ sub, href, runId }: any) {
-  const [stock, dropped] = await Promise.all([getStock(20, runId), getStockDropped(20, runId)]);
-  const filtered = sub ? stock.filter((p) => p.sub === sub) : stock;
+async function StockTab({ sub, page: requested, href, runId }: {
+  sub?: string; page: number; href: BoardHref; runId: string;
+}) {
+  const selected = sub && SUB_ORDER.includes(sub) ? sub : null;
+  const counts = await getBoardStockCounts(runId);
+  const total = counts.reduce((sum, c) => sum + c.kept, 0);
+  const dropped = counts.reduce((sum, c) => sum + c.dropped, 0);
+  const selectedCount = selected ? counts.find((c) => c.sub === selected)?.kept ?? 0 : total;
+  const pages = Math.max(1, Math.ceil(selectedCount / BOARD_PAGE_SIZE));
+  const page = Math.min(requested, pages);
+  const filtered = await getBoardStockPage(runId, selected, page);
   const top = filtered.filter((p) => p.worth >= 80);
 
   return (
     <section className="block">
       <p className="eyebrow">재고</p>
-      <h2>카드가 안 된 나머지 {stock.length}건</h2>
+      <h2>카드가 안 된 나머지 {total}건</h2>
       <div className="insight">
         눈에 보이는 정도가 아니라 <b>실제로 데이터화</b>돼 있습니다 — 전부 영역·유형·주제·요약·가치·키워드가 붙어 있어요.
         <b> 가치 20점 이하 {dropped}건은 목록에서 뺐습니다.</b>
@@ -335,17 +358,17 @@ async function StockTab({ sub, href, runId }: any) {
       </div>
 
       <div className="sfilter">
-        <Link href={href({ sub: undefined })} scroll={false} className={`sf${!sub ? " on" : ""}`}>전체 {stock.length}</Link>
+        <Link href={href({ sub: undefined, page: undefined })} scroll={false} className={`sf${!selected ? " on" : ""}`}>전체 {total}</Link>
         {SUB_ORDER.map((s) => (
-          <Link key={s} href={href({ sub: s })} scroll={false} className={`sf${sub === s ? " on" : ""}`}>
-            r/{s} <span className="sfn">{stock.filter((p) => p.sub === s).length}</span>
+          <Link key={s} href={href({ sub: s, page: undefined })} scroll={false} className={`sf${selected === s ? " on" : ""}`}>
+            r/{s} <span className="sfn">{counts.find((c) => c.sub === s)?.kept ?? 0}</span>
           </Link>
         ))}
       </div>
 
       {top.length > 0 && (
         <>
-          <h4 style={{ marginTop: "1.6rem" }}>먼저 볼 것 — 가치 80점 이상 {top.length}건</h4>
+          <h4 style={{ marginTop: "1.6rem" }}>이 페이지에서 먼저 볼 것 — 가치 80점 이상 {top.length}건</h4>
           <p className="note">카드로 승격시켜도 되는 수준입니다.</p>
           <div className="tsgrid">
             {top.map((p) => (
@@ -364,7 +387,7 @@ async function StockTab({ sub, href, runId }: any) {
         </>
       )}
 
-      <h4 style={{ marginTop: "2rem" }}>전체 {filtered.length}건</h4>
+      <h4 style={{ marginTop: "2rem" }}>선택한 목록 {selectedCount}건 중 {filtered.length}건 표시</h4>
       <div className="rlist">
         {filtered.map((p) => (
           <div className="rrow" key={p.id}>
@@ -389,19 +412,24 @@ async function StockTab({ sub, href, runId }: any) {
           </div>
         ))}
       </div>
+      <Pagination page={page} pages={pages} href={href} />
     </section>
   );
 }
 
 /* ───────────────────────── RSS ───────────────────────── */
 
-async function RssTab() {
-  const [feeds, items] = await Promise.all([getRssFeeds(), getRssItems(200)]);
+async function RssTab({ page: requested, href }: { page: number; href: BoardHref }) {
+  const feeds = await getBoardRssFeeds();
+  const total = feeds.reduce((sum, f) => sum + f.n, 0);
+  const pages = Math.max(1, Math.ceil(total / BOARD_PAGE_SIZE));
+  const page = Math.min(requested, pages);
+  const items = await getBoardRssItems(page);
   const mx = Math.max(...feeds.map((f) => f.n), 1);
   return (
     <section className="block">
       <p className="eyebrow">매거진</p>
-      <h2>뷰티 매거진 RSS {items.length}건</h2>
+      <h2>뷰티 매거진 RSS {total}건</h2>
       <div className="insight">
         레딧과 성격이 완전히 다릅니다. 레딧이 “소비자가 지금 떠드는 것”이라면
         이건 <b>“편집자가 검증해 내보낸 것”</b>이에요.
@@ -419,10 +447,10 @@ async function RssTab() {
           </tr>
         ))}</tbody>
       </table></div>
-      <h4 style={{ marginTop: "1.7rem" }}>최근 기사</h4>
+      <h4 style={{ marginTop: "1.7rem" }}>최근 기사 — {items.length}건 표시</h4>
       <div className="rlist">
         {items.map((it) => (
-          <div className="rrow" key={it.url}>
+          <div className="rrow" key={it.id}>
             <span className="rfeed">{(it.feed ?? "").slice(0, 16)}</span>
             <div className="rmid">
               <a href={it.url} target="_blank" rel="noopener noreferrer">{it.title.slice(0, 78)}</a>
@@ -432,6 +460,7 @@ async function RssTab() {
           </div>
         ))}
       </div>
+      <Pagination page={page} pages={pages} href={href} />
     </section>
   );
 }
@@ -439,7 +468,7 @@ async function RssTab() {
 /* ───────────────────────── 나의 요청 ───────────────────────── */
 
 async function MineTab({ areas }: any) {
-  const [demands, gap, entKinds] = await Promise.all([getDemands(), getClinicGap(), getEntityKinds()]);
+  const [demands, gap, entKinds] = await Promise.all([getBoardDemands(), getBoardClinicGap(), getBoardEntityKinds()]);
   const ek: Record<string, number> = Object.fromEntries(entKinds.map((e: any) => [e.kind, e.n]));
   const cmtHave = areas.reduce((s: number, a: any) => s + a.with_cmt, 0);
 
@@ -507,7 +536,8 @@ async function MineTab({ areas }: any) {
 
 /* ───────────────────────── 글감 ───────────────────────── */
 
-function DraftTab({ cards }: { cards: any[] }) {
+async function DraftTab({ runId }: { runId: string }) {
+  const cards = await getBoardCards(runId, "draft");
   return (
     <section className="block">
       <p className="eyebrow">확정</p>
