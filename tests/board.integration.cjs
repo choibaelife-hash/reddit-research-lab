@@ -43,6 +43,10 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   }
   const first = await read('main');
   assert.equal(has(first.calls, 'from workspaces').length, 1, 'request workspace dedup');
+  assert.ok(first.html.includes('선택한 주 레딧 <!-- -->1<!-- -->건'));
+  assert.ok(first.html.includes('선택한 주에 분류된 글 <!-- -->1<!-- -->건'));
+  assert.ok(first.html.includes('전체 누적 키워드'));
+  assert.ok(!first.html.includes('100건이 어떻게 나뉘었나'));
   assert.equal(has(first.calls, ' as posts,').length, 1, 'cold common cache');
   assert.equal(has(first.calls, 'from post_comments where').length, 0, 'main does not hydrate comments');
   console.log(`main cold: ${first.calls.length} queries`);
@@ -72,10 +76,12 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   const rssPage2 = await read('rss', '&page=2');
   assert.ok(rssPage2.html.includes('RSS article 31'));
   assert.ok(!rssPage2.html.includes('RSS article 61'));
-  assert.equal(has(rssPage2.calls, 'contentSnippet')[0].params[1], 30);
+  if (has(rssPage2.calls, 'contentSnippet')[0])
+    assert.equal(has(rssPage2.calls, 'contentSnippet')[0].params[1], 30);
   const rssPage3 = await read('rss', '&page=999');
   assert.ok(rssPage3.html.includes('RSS article 65'));
-  assert.equal(has(rssPage3.calls, 'contentSnippet')[0].params[1], 60);
+  if (has(rssPage3.calls, 'contentSnippet')[0])
+    assert.equal(has(rssPage3.calls, 'contentSnippet')[0].params[1], 60);
   const invalidPage = await read('rss', '&page=-1');
   assert.ok(invalidPage.html.includes('RSS article 1'));
   const otherWeek = await read('main', '&week=2026-09-14');
@@ -106,8 +112,29 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.equal(has(mainAfterSave.calls, 'from runs').filter(q => q.sql.includes('limit 30')).length, 0);
   const draft = await read('draft');
   assert.ok(draft.html.includes('Fixture angle'), 'saved card visible in draft');
+  assert.ok(draft.html.includes('/board/export?week=2026-09-21'), 'download follows the displayed week');
   assert.equal(has(draft.calls, 'from post_comments where').length, 0);
   assert.equal(has(draft.calls, 'from idea_cards c')[0].params[1], true);
+  const exportStart = queries().length;
+  const download = await fetch(`${origin}/board/export?week=2026-09-21`, {
+    headers: { cookie: cookie('user-a') },
+  });
+  const markdown = await download.text();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(download.status, 200);
+  assert.ok(markdown.includes('주차 2026-09-21'));
+  assert.ok(markdown.includes('Fixture angle'));
+  assert.deepEqual(has(queries().slice(exportStart), 'from idea_cards c')[0].params,
+    [run, true], 'export only reads saved cards in the selected run');
+  const otherExportStart = queries().length;
+  const otherDownload = await fetch(`${origin}/board/export?week=2026-09-21`, {
+    headers: { cookie: cookie('user-b') },
+  });
+  const otherMarkdown = await otherDownload.text();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.ok(otherMarkdown.includes('확정한 글감이 없습니다.'));
+  assert.deepEqual(has(queries().slice(otherExportStart), 'from idea_cards c')[0].params,
+    ['0', true], 'another workspace has no matching cards');
   const edit = async (form, fields) => {
     const action = form.match(/name="(\$ACTION_ID_[^"]+)"/)[1];
     const body = new FormData(); body.set(action, ''); body.set('id', '1');

@@ -145,8 +145,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
             </details>
           </span>
           <span className="navsum">
-            레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
-            평균 가치 {stats.avg_worth} · 확정 <b>{stats.saved}</b>건
+            선택한 주 레딧 {stats.posts}건 · 평균 가치 {stats.avg_worth ?? "—"} · 확정 <b>{stats.saved}</b>건 ·
+            누적 등록 실체 {stats.entities}개 · 댓글 수집 글 {stats.comments}건
           </span>
         </div>
       </nav>
@@ -158,7 +158,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         {tab === "stock" && <StockTab sub={sp.sub} page={requestedPage(sp.page)} href={href} runId={runId} />}
         {tab === "rss" && <RssTab page={requestedPage(sp.page)} href={href} />}
         {tab === "mine" && <MineTab areas={areas} />}
-        {tab === "draft" && <DraftTab runId={runId} />}
+        {tab === "draft" && <DraftTab runId={runId} week={run?.week} />}
       </Suspense>
     </div>
   );
@@ -185,11 +185,11 @@ async function MainTab({ areas, area, href, runId }: any) {
     <>
       <section className="block">
         <p className="eyebrow">키워드</p>
-        <h2>이번 주에 나온 키워드</h2>
+        <h2>전체 누적 키워드</h2>
         <div className="insight">
           글과 댓글에서 실제로 뽑힌 이름입니다. <b>언급이 많을수록 진한 칸</b>이에요.
           <b> 붉은 테두리</b>는 묻는 사람은 있는데 후기·추천이 하나도 없는 키워드 —
-          이번 주 {holes.length}개고, 그 자리가 먼저 쓸 자리입니다.
+          전체 누적 {holes.length}개고, 그 자리가 먼저 쓸 자리입니다.
         </div>
         <div className="kgrid">
           {keywords.map((k: any) => {
@@ -208,7 +208,7 @@ async function MainTab({ areas, area, href, runId }: any) {
 
       <section className="block">
         <p className="eyebrow">분류</p>
-        <h2>{stats0(cards)}건이 어떻게 나뉘었나</h2>
+        <h2>선택한 주에 분류된 글 {areas.reduce((sum: number, a: any) => sum + a.n, 0)}건</h2>
         <div className="insight">
           막대 높이는 <b>건수</b>, 아래 게이지는 <b>평균 가치</b>입니다. 막대를 누르면 아래에 펼쳐집니다.
         </div>
@@ -290,7 +290,7 @@ async function MainTab({ areas, area, href, runId }: any) {
 
       <section className="block">
         <p className="eyebrow">누적 자산</p>
-        <h2>이번 주에 쌓인 실체</h2>
+        <h2>전체 누적 실체</h2>
         <div className="insight">
           2회 이상 언급된 것만입니다. 전체로는 <b>브랜드 {ek.brand ?? 0} · 제품 {ek.product ?? 0} ·
           시술 {ek.treatment ?? 0} · 성분 {ek.ingredient ?? 0} · 병원 {ek.clinic ?? 0}</b>.
@@ -311,8 +311,6 @@ async function MainTab({ areas, area, href, runId }: any) {
     </>
   );
 }
-
-const stats0 = (cards: any[]) => 100;
 
 /* ───────────────────────── 쓸 소재 ───────────────────────── */
 
@@ -485,7 +483,7 @@ async function MineTab({ areas }: any) {
 
       <section className="block">
         <h2>수집 중 — 방문객 수요 프로필</h2>
-        <div className="insight">이번 주 <b>{demands.length}건</b>. 나중에 코스 설계 서비스의 <b>수요 분포</b>가 됩니다.</div>
+        <div className="insight">전체 누적 <b>{demands.length}건</b>. 나중에 코스 설계 서비스의 <b>수요 분포</b>가 됩니다.</div>
         <div className="tablewrap"><table>
           <thead><tr><th>출발지</th><th>연령</th><th>체류</th><th>예산</th><th>목표</th><th>우려</th><th /></tr></thead>
           <tbody>{demands.map((d: any) => (
@@ -503,8 +501,9 @@ async function MineTab({ areas }: any) {
       <section className="block">
         <h2>구멍 — 병원 데이터가 안 쌓인다</h2>
         <div className="insight">
-          플랫폼 핵심 자산은 <b>병원</b>인데 이번 주 <b>{ek.clinic ?? 0}건</b>뿐입니다.
-          브랜드·제품은 본문에 나오지만 <b>병원 이름은 댓글에만</b> 나오는데, 100건 중 <b>{cmtHave}건</b>에만 댓글을 붙였어요.
+          플랫폼 핵심 자산은 <b>병원</b>인데 전체 누적 <b>{ek.clinic ?? 0}건</b>뿐입니다.
+          브랜드·제품은 본문에 나오지만 <b>병원 이름은 댓글에도</b> 나옵니다.
+          선택한 주의 분류된 글 {areas.reduce((sum: number, a: any) => sum + a.n, 0)}건 중 <b>{cmtHave}건</b>에 댓글이 있어요.
         </div>
         <h4 style={{ marginTop: "1.3rem" }}>영역별 댓글 확보율</h4>
         <div className="tablewrap"><table>
@@ -536,7 +535,7 @@ async function MineTab({ areas }: any) {
 
 /* ───────────────────────── 글감 ───────────────────────── */
 
-async function DraftTab({ runId }: { runId: string }) {
+async function DraftTab({ runId, week }: { runId: string; week?: string }) {
   const cards = await getBoardCards(runId, "draft");
   return (
     <section className="block">
@@ -553,7 +552,7 @@ async function DraftTab({ runId }: { runId: string }) {
         </div>
       ) : (
         <>
-          <p><a className="dl" href="/board/export">마크다운 파일로 내려받기</a></p>
+          <p><a className="dl" href={`/board/export?week=${encodeURIComponent(week ?? "")}`}>마크다운 파일로 내려받기</a></p>
           {cards.map((c) => {
             const a = c.angles?.[c.chosen_angle ?? 0] ?? c.angles?.[0];
             return (

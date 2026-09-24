@@ -25,7 +25,7 @@ class Pool {
     else if (s.includes('from workspaces')) rows = params[0] === 'user-b'
       ? [{ id: `workspace-b-${run}`, name: 'Workspace B' }] : [{ id: `workspace-a-${run}`, name: 'Workspace A' }];
     else if (s.includes('from users')) rows = [{ email: 'fixture@example.com', plan: 'pro', created_at: '2026-09-01' }];
-    else if (s.includes('from runs')) rows = params[0] === `workspace-b-${run}` ? [] : [{ id: params[2] ? String(BigInt(run) - 1n) : run,
+    else if (s.includes('from runs')) rows = params[0] === `workspace-b-${run}` ? [] : [{ id: params[2] === '2026-09-14' ? String(BigInt(run) - 1n) : run,
       week: params[2] || '2026-09-21', kind: 'reddit', status: 'done' }];
     else if (s.includes(' as posts,')) rows = [{ posts: 1, cards: params[0] === '0' ? 0 : 1,
       saved: saved && params[0] !== '0' ? 1 : 0, entities: 1, comments: 1, avg_worth: 90 }];
