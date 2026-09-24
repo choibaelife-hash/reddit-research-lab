@@ -45,7 +45,8 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.equal(has(first.calls, 'from workspaces').length, 1, 'request workspace dedup');
   assert.ok(first.html.includes('선택한 주 레딧 <!-- -->1<!-- -->건'));
   assert.ok(first.html.includes('선택한 주에 분류된 글 <!-- -->1<!-- -->건'));
-  assert.ok(first.html.includes('전체 누적 키워드'));
+  assert.ok(first.html.includes('전체 수집 자료의 키워드'));
+  assert.ok(first.html.includes('전체 수집 자료의 등록 실체'));
   assert.ok(!first.html.includes('100건이 어떻게 나뉘었나'));
   assert.equal(has(first.calls, ' as posts,').length, 1, 'cold common cache');
   assert.equal(has(first.calls, 'from post_comments where').length, 0, 'main does not hydrate comments');
@@ -87,7 +88,7 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   const otherWeek = await read('main', '&week=2026-09-14');
   // The prior stock-page visit already primed this week's common cache.
   assert.equal(has(otherWeek.calls, ' as posts,').length, 0);
-  assert.ok(otherWeek.html.includes('week=2026-09-14#card-1'), 'card link preserves week');
+  assert.ok(otherWeek.html.includes('week=2026-09-14#card-2'), 'card link preserves week');
   const otherUser = await read('ideas', '', 'user-b');
   assert.ok(otherUser.html.includes('Workspace B'));
   assert.ok(!otherUser.html.includes('Fixture title'), 'empty workspace cannot access cached other run');
@@ -126,6 +127,12 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.ok(markdown.includes('Fixture angle'));
   assert.deepEqual(has(queries().slice(exportStart), 'from idea_cards c')[0].params,
     [run, true], 'export only reads saved cards in the selected run');
+  const priorDownload = await fetch(`${origin}/board/export?week=2026-09-14`, {
+    headers: { cookie: cookie('user-a') },
+  });
+  const priorMarkdown = await priorDownload.text();
+  assert.ok(priorMarkdown.includes('Previous week angle'));
+  assert.ok(!priorMarkdown.includes('Fixture angle'), 'selected week export excludes current week cards');
   const otherExportStart = queries().length;
   const otherDownload = await fetch(`${origin}/board/export?week=2026-09-21`, {
     headers: { cookie: cookie('user-b') },
