@@ -1,7 +1,7 @@
 "use server";
 
 import { pool } from "@/lib/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 
 // 정적 HTML 시절엔 확정·메모가 브라우저 localStorage에만 남았다.
 // 이제 idea_cards 테이블에 실제로 저장한다 — 다른 기기에서 열어도 그대로 있고, 나중에 자동화가 읽을 수 있다.
@@ -17,6 +17,7 @@ export async function toggleConfirm(formData: FormData) {
       where mention_id = $1`,
     [id]
   );
+  updateTag("board-data");
   revalidatePath("/board");
 }
 
@@ -28,6 +29,7 @@ export async function chooseAngle(formData: FormData) {
     `update idea_cards set chosen_angle = $2, updated_at = now() where mention_id = $1`,
     [id, idx]
   );
+  updateTag("board-data");
   revalidatePath("/board");
 }
 
@@ -39,5 +41,6 @@ export async function saveNote(formData: FormData) {
     `update idea_cards set note = $2, updated_at = now() where mention_id = $1`,
     [id, note || null]
   );
+  updateTag("board-data");
   revalidatePath("/board");
 }

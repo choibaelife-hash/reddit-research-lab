@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { denyCron } from "@/lib/cron-auth";
 import { tick, nextStep } from "@/lib/pipeline";
+import { revalidateTag } from "next/cache";
 
 export async function GET(req: NextRequest) {
   // Bearer 토큰만 받는다.
@@ -19,5 +20,9 @@ export async function GET(req: NextRequest) {
 
   // ?ws=<워크스페이스id> — 크론이 돌 차례인 워크스페이스를 지정한다. 없으면 첫 번째.
   const ws = req.nextUrl.searchParams.get("ws") ?? undefined;
-  return NextResponse.json(await tick(ws));
+  try {
+    return NextResponse.json(await tick(ws));
+  } finally {
+    revalidateTag("board-data", { expire: 0 });
+  }
 }

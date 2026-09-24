@@ -1,4 +1,6 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { pool } from "@/lib/db";
 import { SESSION_COOKIE, WS_COOKIE, verifySession } from "@/lib/session.mjs";
 
@@ -27,7 +29,7 @@ export const PLANS = {
 export type Me = { email: string; plan: keyof typeof PLANS; created_at: string };
 
 /** 로그인한 사람. 없으면 null. */
-export async function me(): Promise<Me | null> {
+export const me = cache(async (): Promise<Me | null> => {
   const uid = await currentUserId();
   if (!uid) return null;
   const { rows } = await pool.query<Me>(
@@ -35,7 +37,7 @@ export async function me(): Promise<Me | null> {
     [uid]
   );
   return rows[0] ?? null;
-}
+});
 
 /** 사용자는 날짜보다 '몇째 주'로 기억한다. "2026-08-24" → "8월 4주" */
 export function weekLabel(week: string): string {
@@ -43,11 +45,12 @@ export function weekLabel(week: string): string {
   return `${m}월 ${Math.ceil(d / 7)}주`;
 }
 
-export async function currentUserId(): Promise<string | null> {
+export const currentUserId = cache(async (): Promise<string | null> => {
   return verifySession((await cookies()).get(SESSION_COOKIE)?.value);
-}
+});
 
-export async function myWorkspaces(): Promise<Workspace[]> {
+// React cache는 요청 안에서만 공유한다. 소유권 확인을 다음 요청으로 넘기지 않는다.
+export const myWorkspaces = cache(async (): Promise<Workspace[]> => {
   const uid = await currentUserId();
   if (!uid) return [];
   return (await pool.query<Workspace>(
@@ -55,24 +58,29 @@ export async function myWorkspaces(): Promise<Workspace[]> {
        from workspaces where user_id = $1 order by created_at`,
     [uid]
   )).rows;
-}
+});
 
 /**
  * 지금 보고 있는 워크스페이스.
  * 쿠키에 담긴 것이 내 것이 아니면(남의 링크를 눌렀거나 계정을 바꿨거나) 무시하고 첫 번째를 준다.
  * 쿠키 값을 그대로 믿으면 남의 워크스페이스가 열린다.
  */
-export async function currentWorkspace(): Promise<Workspace | null> {
+export const currentWorkspace = cache(async (): Promise<Workspace | null> => {
   const list = await myWorkspaces();
   if (!list.length) return null;
   const want = (await cookies()).get(WS_COOKIE)?.value;
   return list.find((w) => w.id === want) ?? list[0];
-}
+});
 
 /** 마이페이지의 실행 기록 표. */
-export async function myRuns(kind?: string): Promise<Run[]> {
+export const myRuns = cache(async (kind?: string): Promise<Run[]> => {
   const ws = await currentWorkspace();
   if (!ws) return [];
+  return workspaceRuns(ws.id, kind ?? null);
+});
+
+// 소유권을 확인한 뒤 목록만 재사용한다. 인수가 캐시 키에 포함된다.
+const workspaceRuns = unstable_cache(async (workspaceId: string, kind: string | null): Promise<Run[]> => {
   return (await pool.query<Run>(
     `select id::text, week::text, kind, status, stats,
             started_at::text, finished_at::text, error
@@ -80,12 +88,12 @@ export async function myRuns(kind?: string): Promise<Run[]> {
       where workspace_id = $1 and ($2::text is null or kind = $2)
       order by week desc, kind
       limit 30`,
-    [ws.id, kind ?? null]
+    [workspaceId, kind]
   )).rows;
-}
+}, ["board-runs-v1"], { tags: ["board-data"], revalidate: 60 });
 
 /** 그 주 실행 하나. week를 안 주면 가장 최근 주. */
-export async function currentRun(kind: string, week?: string): Promise<Run | null> {
+export const currentRun = cache(async (kind: string, week?: string): Promise<Run | null> => {
   const ws = await currentWorkspace();
   if (!ws) return null;
   const { rows } = await pool.query<Run>(
@@ -98,7 +106,7 @@ export async function currentRun(kind: string, week?: string): Promise<Run | nul
     [ws.id, kind, week ?? null]
   );
   return rows[0] ?? null;
-}
+});
 
 /**
  * 내 모든 워크스페이스의 실행 기록. 마이페이지가 워크스페이스별로 묶어 보여준다.

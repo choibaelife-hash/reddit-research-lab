@@ -26,7 +26,29 @@ export type Card = {
 const label = (ko: string | null, en: string | null) =>
   ko && en && ko !== en ? `${ko} / ${en}` : (ko || en || "");
 
-export async function getCards(runId?: string | null): Promise<Card[]> {
+export type CardSummary = Pick<Card,
+  "id" | "title" | "sub" | "area" | "type" | "topic" | "worth" | "angles" | "status" | "chosen_angle"
+>;
+
+/** 한눈에 탭은 댓글·본문·상세 근거를 사용하지 않는다. */
+export async function getCardSummaries(runId: string): Promise<CardSummary[]> {
+  return (await pool.query<CardSummary>(
+    `select m.id, m.title, m.raw->>'subreddit' as sub,
+            a.beauty_area as area, a.post_type as type, a.topic, a.worth,
+            c.angles, c.status, c.chosen_angle
+       from idea_cards c
+       join mentions m on m.id = c.mention_id
+       join post_analysis a on a.mention_id = c.mention_id
+      where c.run_id = $1::bigint
+      order by a.worth desc, m.raw->>'subreddit'`,
+    [runId]
+  )).rows;
+}
+
+export async function getCards(
+  runId?: string | null,
+  { savedOnly = false, includeComments = true }: { savedOnly?: boolean; includeComments?: boolean } = {}
+): Promise<Card[]> {
   const rows = (await pool.query(
     `select m.id, m.title, m.url, m.raw->>'body' as body,
             m.raw->>'subreddit' as sub, (m.raw->>'rank')::int as rank,
@@ -37,21 +59,44 @@ export async function getCards(runId?: string | null): Promise<Card[]> {
        join mentions m on m.id = c.mention_id
        join post_analysis a on a.mention_id = c.mention_id
       where ($1::bigint is null or c.run_id = $1::bigint)
+        and (not $2::boolean or c.status = 'saved')
       order by a.worth desc, m.raw->>'subreddit'`,
-    [runId ?? null]
+    [runId ?? null, savedOnly]
   )).rows;
 
-  for (const r of rows) {
-    r.comments = (await pool.query(
-      `select rank, author, body, body_ko from post_comments where mention_id = $1 order by rank`, [r.id]
-    )).rows;
-    r.keywords = (await pool.query<{ ko: string | null; en: string }>(
-      `select distinct e.name_ko as ko, e.canonical_name as en
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  // 카드 수와 무관하게 상세 조회는 최대 두 번. 서로 독립적이므로 함께 실행한다.
+  const [comments, keywords] = await Promise.all([
+    includeComments ? pool.query<Card["comments"][number] & { mention_id: string }>(
+      `select mention_id, rank, author, body, body_ko from post_comments
+        where mention_id = any($1::uuid[]) order by mention_id, rank`, [ids]
+    ).then((r) => r.rows) : Promise.resolve([]),
+    pool.query<{ mention_id: string; ko: string | null; en: string }>(
+      `select distinct em.mention_id, e.name_ko as ko, e.canonical_name as en
          from entity_mentions em join entities e on e.id = em.entity_id
-        where em.mention_id = $1`, [r.id]
-    )).rows.map((x) => label(x.ko, x.en)).filter(Boolean);
+        where em.mention_id = any($1::uuid[])`, [ids]
+    ).then((r) => r.rows),
+  ]);
+  const commentsById = new Map<string, Card["comments"]>();
+  const keywordsById = new Map<string, string[]>();
+  for (const { mention_id, ...comment } of comments) {
+    const key = String(mention_id);
+    const list = commentsById.get(key) ?? [];
+    list.push(comment);
+    commentsById.set(key, list);
   }
-  return rows as Card[];
+  for (const { mention_id, ko, en } of keywords) {
+    const key = String(mention_id);
+    const list = keywordsById.get(key) ?? [];
+    const text = label(ko, en);
+    if (text) list.push(text);
+    keywordsById.set(key, list);
+  }
+  return rows.map((r) => ({ ...r,
+    comments: commentsById.get(String(r.id)) ?? [],
+    keywords: keywordsById.get(String(r.id)) ?? [],
+  })) as Card[];
 }
 
 export type StockRow = {
@@ -171,11 +216,13 @@ export const getRssItems = async (limit = 200) =>
   )).rows;
 
 export const getStats = async (runId?: string | null) =>
-  (await pool.query<{ posts: number; cards: number; entities: number; comments: number; avg_worth: number }>(
+  (await pool.query<{ posts: number; cards: number; saved: number; entities: number; comments: number; avg_worth: number }>(
     `select (select count(*)::int from post_analysis
               where ($1::bigint is null or run_id = $1::bigint)) as posts,
             (select count(*)::int from idea_cards
               where ($1::bigint is null or run_id = $1::bigint)) as cards,
+            (select count(*)::int from idea_cards
+              where status = 'saved' and ($1::bigint is null or run_id = $1::bigint)) as saved,
             (select count(*)::int from entities) as entities,
             (select count(distinct mention_id)::int from post_comments) as comments,
             (select round(avg(worth))::int from post_analysis

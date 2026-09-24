@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BoardCard } from "@/components/board/BoardCard";
 import { logout } from "@/app/login/actions";
 import { currentRun, myWorkspaces, currentWorkspace, myRuns, me, weekLabel, PLANS } from "@/lib/workspace";
 import { switchWorkspace } from "./switch";
+import { getBoardSummary } from "@/lib/board-cache";
 import {
-  SUB_ORDER, getCards, getStock, getStockDropped, getAreas, getAreaPosts, getAreaTypes,
+  SUB_ORDER, getCards, getCardSummaries, getStock, getStockDropped, getAreaPosts, getAreaTypes,
   getKeywords, getEntityKinds, getTopEntities, getDemands, getClinicGap,
-  getRssFeeds, getRssItems, getStats,
+  getRssFeeds, getRssItems,
 } from "@/lib/board-data";
 
 export const dynamic = "force-dynamic";
@@ -27,22 +29,18 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   const tab = TABS.some((t) => t.k === sp.tab) ? sp.tab! : "main";
 
   // 화면 전체가 이 실행 하나를 본다. week가 없으면 가장 최근 주.
-  const run = await currentRun("reddit", sp.week);
+  const [run, spaces, here, runs, who] = await Promise.all([
+    currentRun("reddit", sp.week), myWorkspaces(), currentWorkspace(), myRuns("reddit"), me(),
+  ]);
   // 실행이 없으면 존재할 수 없는 번호를 넘긴다.
   // null을 넘기면 조회 함수의 `$1 is null or ...` 조건이 참이 되어 필터가 통째로 꺼지고,
   // 실행 기록이 하나도 없는 새 워크스페이스에 남의 워크스페이스 데이터가 보인다.
   // bigserial은 1부터 시작하므로 0은 어떤 행과도 안 맞는다.
   const runId = run?.id ?? "0";
 
-  const [spaces, here, runs, who] = await Promise.all([
-    myWorkspaces(), currentWorkspace(), myRuns("reddit"), me(),
-  ]);
   const plan = PLANS[who?.plan ?? "pro"];
 
-  const [stats, cards, areas] = await Promise.all([
-    getStats(runId), getCards(runId), getAreas(runId),
-  ]);
-  const saved = cards.filter((c) => c.status === "saved");
+  const { stats, areas } = await getBoardSummary(runId);
   const href = (next: Partial<SP>) => {
     const q = new URLSearchParams();
     const merged = { tab, area: sp.area, sub: sp.sub, week: sp.week, ...next };
@@ -51,7 +49,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   };
 
   const counts: Record<string, number> = {
-    ideas: cards.length, draft: saved.length,
+    ideas: stats.cards, draft: stats.saved,
   };
 
   return (
@@ -133,29 +131,30 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           </span>
           <span className="navsum">
             레딧 {stats.posts}건 · 키워드 {stats.entities} · 댓글 {stats.comments}개 글 ·
-            평균 가치 {stats.avg_worth} · 확정 <b>{saved.length}</b>건
+            평균 가치 {stats.avg_worth} · 확정 <b>{stats.saved}</b>건
           </span>
         </div>
       </nav>
 
-      {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} cards={cards} runId={runId} />}
-      {tab === "ideas" && <IdeasTab cards={cards} />}
-      {tab === "stock" && <StockTab sub={sp.sub} href={href} runId={runId} />}
-      {tab === "rss" && <RssTab />}
-      {tab === "mine" && <MineTab areas={areas} />}
-      {tab === "draft" && <DraftTab cards={saved} />}
+      <Suspense key={`${runId}:${tab}:${sp.area ?? ""}:${sp.sub ?? ""}`}
+                fallback={<section className="block" role="status">내용을 불러오는 중입니다…</section>}>
+        {tab === "main" && <MainTab areas={areas} area={sp.area} href={href} runId={runId} />}
+        {tab === "ideas" && <IdeasTab runId={runId} />}
+        {tab === "stock" && <StockTab sub={sp.sub} href={href} runId={runId} />}
+        {tab === "rss" && <RssTab />}
+        {tab === "mine" && <MineTab areas={areas} />}
+        {tab === "draft" && <DraftTab runId={runId} />}
+      </Suspense>
     </div>
   );
 }
 
 /* ───────────────────────── 한눈에 ───────────────────────── */
 
-async function MainTab({ areas, area, href, cards, runId }: any) {
-  const [keywords, entKinds, topEnts] = await Promise.all([
-    getKeywords(), getEntityKinds(), getTopEntities(),
-  ]);
+async function MainTab({ areas, area, href, runId }: any) {
   const selected = area && areas.some((a: any) => a.area === area) ? area : areas[0]?.area;
-  const [areaPosts, areaTypes] = await Promise.all([
+  const [keywords, entKinds, topEnts, cards, areaPosts, areaTypes] = await Promise.all([
+    getKeywords(), getEntityKinds(), getTopEntities(), getCardSummaries(runId),
     getAreaPosts(selected, runId), getAreaTypes(selected, runId),
   ]);
 
@@ -258,7 +257,7 @@ async function MainTab({ areas, area, href, cards, runId }: any) {
                 <div className="blabel">r/{sub}</div>
                 <div className="bcells">
                   {row.map((c: any) => (
-                    <Link key={c.id} href={`/board?tab=ideas#card-${c.id}`}
+                    <Link key={c.id} href={`${href({ tab: "ideas", area: undefined, sub: undefined })}#card-${c.id}`}
                           className={`bcell s${step(c.worth)}${c.status === "saved" ? " done" : ""}`}>
                       <span className="bt">{c.angles?.[c.chosen_angle ?? 0]?.ko ?? c.topic}</span>
                       <span className="bmeta">{c.area} · {c.type}</span>
@@ -302,7 +301,8 @@ const stats0 = (cards: any[]) => 100;
 
 /* ───────────────────────── 쓸 소재 ───────────────────────── */
 
-function IdeasTab({ cards }: { cards: any[] }) {
+async function IdeasTab({ runId }: { runId: string }) {
+  const cards = await getCards(runId);
   return (
     <section className="block">
       <p className="eyebrow">콘텐츠 후보</p>
@@ -507,7 +507,8 @@ async function MineTab({ areas }: any) {
 
 /* ───────────────────────── 글감 ───────────────────────── */
 
-function DraftTab({ cards }: { cards: any[] }) {
+async function DraftTab({ runId }: { runId: string }) {
+  const cards = await getCards(runId, { savedOnly: true, includeComments: false });
   return (
     <section className="block">
       <p className="eyebrow">확정</p>
