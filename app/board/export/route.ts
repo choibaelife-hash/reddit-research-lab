@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { getCards } from "@/lib/board-data";
+import { currentRun } from "@/lib/workspace";
 
 // 확정한 글감을 마크다운 파일로 내려준다.
 // 아티팩트 샌드박스는 다운로드를 막아서 복사 버튼으로 우회했었는데, 앱에서는 실제 파일로 받을 수 있다.
-export async function GET() {
-  const cards = (await getCards()).filter((c) => c.status === "saved");
+export async function GET(request: Request) {
+  const week = new URL(request.url).searchParams.get("week") ?? undefined;
+  const run = await currentRun("reddit", week);
+  const cards = await getCards(run?.id ?? "0", { savedOnly: true });
 
   const out: string[] = [
-    "# 이번 주 글감", "",
-    `추출 ${new Date().toISOString().slice(0, 10)} · 출처: 레딧 4개 서브레딧`, "",
+    "# 선택한 주 글감", "",
+    `주차 ${run?.week ?? "기록 없음"} · 추출 ${new Date().toISOString().slice(0, 10)} · 출처: 레딧 4개 서브레딧`, "",
   ];
 
   cards.forEach((c, i) => {

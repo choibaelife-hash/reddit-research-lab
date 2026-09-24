@@ -25,7 +25,7 @@ class Pool {
     else if (s.includes('from workspaces')) rows = params[0] === 'user-b'
       ? [{ id: `workspace-b-${run}`, name: 'Workspace B' }] : [{ id: `workspace-a-${run}`, name: 'Workspace A' }];
     else if (s.includes('from users')) rows = [{ email: 'fixture@example.com', plan: 'pro', created_at: '2026-09-01' }];
-    else if (s.includes('from runs')) rows = params[0] === `workspace-b-${run}` ? [] : [{ id: params[2] ? String(BigInt(run) - 1n) : run,
+    else if (s.includes('from runs')) rows = params[0] === `workspace-b-${run}` ? [] : [{ id: params[2] === '2026-09-14' ? String(BigInt(run) - 1n) : run,
       week: params[2] || '2026-09-21', kind: 'reddit', status: 'done' }];
     else if (s.includes(' as posts,')) rows = [{ posts: 1, cards: params[0] === '0' ? 0 : 1,
       saved: saved && params[0] !== '0' ? 1 : 0, entities: 1, comments: 1, avg_worth: 90 }];
@@ -40,7 +40,9 @@ class Pool {
       })).filter(r => !params[1] || r.sub === params[1]).slice(params[3], params[3] + params[2]);
     }
     else if (s.includes('from idea_cards c')) rows = params[0] === '0' || (params[1] && !saved)
-      ? [] : [{ ...card, status: saved ? 'saved' : 'candidate' }];
+      ? [] : [{ ...(params[0] === String(BigInt(run) - 1n)
+        ? { ...card, id: '2', angles: [{ ko: 'Previous week angle', en: 'old', guide: 'old guide' }] }
+        : card), status: saved ? 'saved' : 'candidate' }];
     else if (s.includes('from post_comments where')) rows = [{ mention_id: '1', rank: 1, author: 'a', body: 'comment', body_ko: '댓글' }];
     else if (s.includes('select distinct em.mention_id')) rows = [{ mention_id: '1', ko: '키워드', en: 'keyword' }];
     else if (s.includes('group by em.mention_id')) rows = params[0].map(id => ({ mention_id: id, keywords: ['brand'] }));
