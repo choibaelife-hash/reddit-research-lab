@@ -4,6 +4,7 @@ import { pool } from "@/lib/db";
 // 정적 HTML 시절엔 파이썬이 이 쿼리들을 돌려 JSON으로 뽑았다. 이제 서버 컴포넌트가 직접 읽는다.
 
 export const SUB_ORDER = ["KoreanBeauty", "AsianBeauty", "SkincareAddiction", "30PlusSkinCare"];
+export const BOARD_PAGE_SIZE = 30;
 
 export type Angle = { ko: string; en: string; guide: string };
 export type WorthParts = {
@@ -105,31 +106,44 @@ export type StockRow = {
   worth: number; keywords: string[];
 };
 
-export async function getStock(minWorth = 20, runId?: string | null): Promise<StockRow[]> {
-  return (await pool.query(
+export async function getStockPage(runId: string, sub: string | null, page: number): Promise<StockRow[]> {
+  const rows = (await pool.query<Omit<StockRow, "keywords">>(
     `select m.id, m.title, m.url, m.raw->>'subreddit' as sub,
-            a.beauty_area as area, a.post_type as type, a.topic, a.summary_ko, a.worth,
-            coalesce((select array_agg(distinct coalesce(e.name_ko, e.canonical_name))
-                        from entity_mentions em join entities e on e.id = em.entity_id
-                       where em.mention_id = m.id), '{}') as keywords
+            a.beauty_area as area, a.post_type as type, a.topic, a.summary_ko, a.worth
        from post_analysis a
        join mentions m on m.id = a.mention_id
        left join idea_cards c on c.mention_id = m.id
-      where c.mention_id is null and a.worth > $1
-        and ($2::bigint is null or a.run_id = $2::bigint)
-      order by a.worth desc`,
-    [minWorth, runId ?? null]
-  )).rows as StockRow[];
+      where c.mention_id is null and a.worth > 20 and a.run_id = $1::bigint
+        and ($2::text is null or m.raw->>'subreddit' = $2)
+      order by a.worth desc, m.id
+      limit $3 offset $4`,
+    [runId, sub, BOARD_PAGE_SIZE, (page - 1) * BOARD_PAGE_SIZE]
+  )).rows;
+  if (!rows.length) return [];
+  const keywords = (await pool.query<{ mention_id: string; keywords: string[] }>(
+    `select em.mention_id, array_agg(distinct coalesce(e.name_ko, e.canonical_name)) as keywords
+       from entity_mentions em join entities e on e.id = em.entity_id
+      where em.mention_id = any($1::uuid[])
+      group by em.mention_id`,
+    [rows.map((r) => r.id)]
+  )).rows;
+  const byId = new Map(keywords.map((r) => [String(r.mention_id), r.keywords]));
+  return rows.map((r) => ({ ...r, keywords: byId.get(String(r.id)) ?? [] }));
 }
 
-export const getStockDropped = async (minWorth = 20, runId?: string | null) =>
-  (await pool.query<{ n: number }>(
-    `select count(*)::int as n from post_analysis a
+// 필터·페이지를 바꿔도 전체 건수는 같은 집계를 사용한다.
+export const getStockCounts = async (runId: string) =>
+  (await pool.query<{ sub: string; kept: number; dropped: number }>(
+    `select m.raw->>'subreddit' as sub,
+            count(*) filter (where a.worth > 20)::int as kept,
+            count(*) filter (where a.worth <= 20)::int as dropped
+       from post_analysis a
+       join mentions m on m.id = a.mention_id
        left join idea_cards c on c.mention_id = a.mention_id
-      where c.mention_id is null and a.worth <= $1
-        and ($2::bigint is null or a.run_id = $2::bigint)`,
-    [minWorth, runId ?? null]
-  )).rows[0].n;
+      where c.mention_id is null and a.run_id = $1::bigint
+      group by 1`,
+    [runId]
+  )).rows;
 
 export const getAreas = async (runId?: string | null) =>
   (await pool.query<{ area: string; n: number; avg_worth: number; with_cmt: number }>(
@@ -208,11 +222,11 @@ export const getRssFeeds = async () =>
        from mentions where source = 'rss' group by 1 order by n desc`
   )).rows;
 
-export const getRssItems = async (limit = 200) =>
-  (await pool.query<{ feed: string; title: string; url: string; day: string; snippet: string }>(
-    `select raw->>'feed' as feed, title, url, occurred_at::date::text as day,
+export const getRssItems = async (limit = BOARD_PAGE_SIZE, offset = 0) =>
+  (await pool.query<{ id: string; feed: string; title: string; url: string; day: string; snippet: string }>(
+    `select id, raw->>'feed' as feed, title, url, occurred_at::date::text as day,
             left(raw->>'contentSnippet', 200) as snippet
-       from mentions where source = 'rss' order by occurred_at desc limit $1`, [limit]
+       from mentions where source = 'rss' order by occurred_at desc, id desc limit $1 offset $2`, [limit, offset]
   )).rows;
 
 export const getStats = async (runId?: string | null) =>

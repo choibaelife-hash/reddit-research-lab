@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestItems, type IngestItem } from "@/lib/ingest";
+import { revalidateTag } from "next/cache";
 
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get("x-api-key");
@@ -15,6 +16,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid payload" }, { status: 400 });
   }
 
-  const result = await ingestItems(source, items);
-  return NextResponse.json(result);
+  try {
+    return NextResponse.json(await ingestItems(source, items));
+  } finally {
+    revalidateTag("board-data", { expire: 0 });
+  }
 }

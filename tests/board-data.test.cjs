@@ -66,3 +66,28 @@ test('stats includes saved count so navigation does not need to load cards', asy
   assert.equal((await data.getStats('25')).saved, 2);
   assert.match(calls[0].sql, /status = 'saved'/);
 });
+
+test('stock page filters in SQL and batches keywords for only its page', async () => {
+  const calls = [];
+  const data = loadTs('lib/board-data.ts', { '@/lib/db': { pool: { query: async (sql, params) => {
+    calls.push({ sql, params });
+    return { rows: sql.includes('group by em.mention_id')
+      ? [{ mention_id: 'item-1', keywords: ['brand'] }]
+      : [{ id: 'item-1', title: 'first' }, { id: 'item-2', title: 'second' }] };
+  } } } });
+  const rows = await data.getStockPage('25', 'KoreanBeauty', 2);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].params, ['25', 'KoreanBeauty', 30, 30]);
+  assert.match(calls[0].sql, /m\.raw->>'subreddit' = \$2/);
+  assert.match(calls[0].sql, /order by a\.worth desc, m\.id/);
+  assert.doesNotMatch(calls[0].sql, /array_agg/);
+  assert.deepEqual(calls[1].params, [['item-1', 'item-2']]);
+  assert.deepEqual(rows.map(r => r.keywords), [['brand'], []]);
+});
+
+test('RSS pagination uses bounded rows and deterministic ordering', async () => {
+  const { data, calls } = fixture([]);
+  await data.getRssItems(30, 60);
+  assert.deepEqual(calls[0].params, [30, 60]);
+  assert.match(calls[0].sql, /order by occurred_at desc, id desc limit \$1 offset \$2/);
+});

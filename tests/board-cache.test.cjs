@@ -4,11 +4,10 @@ const loadTs = require('./load-ts.cjs');
 
 test('summary cache separates run IDs and configures collection invalidation', async () => {
   const calls = [];
-  let options;
+  const entries = [];
   const summary = loadTs('lib/board-cache.ts', {
     'next/cache': { unstable_cache: (fn, keys, opts) => {
-      assert.deepEqual(keys, ['board-summary-v1']);
-      options = opts;
+      entries.push({ keys, opts });
       return fn;
     } },
     '@/lib/board-data': {
@@ -19,7 +18,10 @@ test('summary cache separates run IDs and configures collection invalidation', a
   assert.equal((await summary.getBoardSummary('25')).stats.cards, 25);
   assert.equal((await summary.getBoardSummary('0')).stats.cards, 0);
   assert.deepEqual(calls, [['stats', '25'], ['areas', '25'], ['stats', '0'], ['areas', '0']]);
-  assert.deepEqual(options, { tags: ['board-data'], revalidate: 60 });
+  assert.deepEqual(entries.find(e => e.keys[0] === 'board-stats-v2' && e.keys[1] === '25').opts,
+    { tags: ['board-data', 'board-counts:25'], revalidate: 60 });
+  assert.ok(entries.some(e => e.keys[0] === 'board-stats-v2' && e.keys[1] === '0'));
+  assert.deepEqual(entries.find(e => e.keys[0] === 'board-areas-v2').opts.tags, ['board-data']);
 });
 
 const routes = [
@@ -64,17 +66,41 @@ for (const [route, dependency, method] of routes) {
   });
 }
 
-test('all card edits expire summary before refreshing the page', async () => {
+test('card edits expire only their run; notes/angles leave counts and collection caches intact', async () => {
   const events = [];
   const actions = loadTs('app/board/actions.ts', {
-    '@/lib/db': { pool: { query: async () => { events.push('write'); } } },
+    '@/lib/db': { pool: { query: async () => { events.push('write'); return { rows: [{ run_id: '25' }] }; } } },
+    '@/lib/board-cache': { cardCacheTag: id => `board-cards:${id}`, countCacheTag: id => `board-counts:${id}` },
     'next/cache': {
-      updateTag: tag => events.push(tag), revalidatePath: path => events.push(path),
+      updateTag: tag => events.push(tag), refresh: () => events.push('refresh'),
     },
   });
   for (const action of ['toggleConfirm', 'chooseAngle', 'saveNote']) {
     events.length = 0;
     await actions[action](new Map([['id', '1'], ['idx', '0'], ['note', 'memo']]));
-    assert.deepEqual(events, ['write', 'board-data', '/board']);
+    assert.deepEqual(events, action === 'toggleConfirm'
+      ? ['write', 'board-cards:25', 'board-counts:25', 'refresh']
+      : ['write', 'board-cards:25', 'refresh']);
+  }
+});
+
+test('external ingestion expires collection cache after writes but not rejected payloads', async () => {
+  const oldSecret = process.env.N8N_INGEST_SECRET;
+  process.env.N8N_INGEST_SECRET = 'fixture';
+  const events = [];
+  const { POST } = loadTs('app/api/ingest/route.ts', {
+    'next/server': { NextResponse: { json: value => value } },
+    'next/cache': { revalidateTag: () => events.push('invalidate') },
+    '@/lib/ingest': { ingestItems: async () => { events.push('write'); return {}; } },
+  });
+  try {
+    await POST({ headers: new Map(), json: async () => ({}) });
+    await POST({ headers: new Map([['x-api-key', 'fixture']]), json: async () => ({}) });
+    assert.deepEqual(events, []);
+    await POST({ headers: new Map([['x-api-key', 'fixture']]), json: async () => ({ source: 'rss', items: [] }) });
+    assert.deepEqual(events, ['write', 'invalidate']);
+  } finally {
+    if (oldSecret === undefined) delete process.env.N8N_INGEST_SECRET;
+    else process.env.N8N_INGEST_SECRET = oldSecret;
   }
 });
