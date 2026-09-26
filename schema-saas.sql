@@ -60,6 +60,28 @@ create index if not exists runs_ws_idx on runs (workspace_id, week desc);
 alter table post_analysis  add column if not exists run_id bigint references runs(id) on delete set null;
 alter table idea_cards     add column if not exists run_id bigint references runs(id) on delete set null;
 
+-- 한 카드에서 후보 1·2와 직접 쓴 3안을 각각 확정한다.
+create table if not exists idea_selections (
+  mention_id uuid not null references idea_cards(mention_id) on delete cascade,
+  choice smallint not null check (choice between 0 and 2),
+  title text not null,
+  title_en text,
+  guide text,
+  saved_at timestamptz not null default now(),
+  primary key (mention_id, choice)
+);
+-- 기존 한 건짜리 확정 기록도 새 목록에서 그대로 보이게 한다.
+insert into idea_selections (mention_id, choice, title, title_en, guide, saved_at)
+select c.mention_id, case when c.chosen_angle = 1 then 1 else 0 end,
+       coalesce(c.angles->(case when c.chosen_angle = 1 then 1 else 0 end)->>'ko', a.topic),
+       c.angles->(case when c.chosen_angle = 1 then 1 else 0 end)->>'en',
+       c.angles->(case when c.chosen_angle = 1 then 1 else 0 end)->>'guide',
+       coalesce(c.saved_at, now())
+  from idea_cards c join post_analysis a on a.mention_id = c.mention_id
+ where c.status = 'saved'
+   and not exists (select 1 from idea_selections s where s.mention_id = c.mention_id)
+on conflict (mention_id, choice) do nothing;
+
 create index if not exists post_analysis_run_idx  on post_analysis (run_id);
 create index if not exists idea_cards_run_idx     on idea_cards (run_id);
 

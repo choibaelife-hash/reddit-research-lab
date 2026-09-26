@@ -8,20 +8,26 @@ export async function GET(request: Request) {
   const week = new URL(request.url).searchParams.get("week") ?? undefined;
   const run = await currentRun("reddit", week);
   const cards = await getCards(run?.id ?? "0", { savedOnly: true });
+  const id = new URL(request.url).searchParams.get("id");
+  const selectedChoice = new URL(request.url).searchParams.get("choice");
+  const entries = cards.flatMap((card) => card.selections.map((selection) => ({ card, selection })))
+    .filter(({ card, selection }) => !id || (card.id === id && String(selection.choice) === selectedChoice));
+  if (id && entries.length === 0) return new NextResponse("글감을 찾을 수 없습니다.", { status: 404 });
 
   const out: string[] = [
     "# 선택한 주 글감", "",
     `주차 ${run?.week ?? "기록 없음"} · 추출 ${new Date().toISOString().slice(0, 10)} · 출처: 레딧 4개 서브레딧`, "",
   ];
 
-  cards.forEach((c, i) => {
-    const a = c.angles?.[c.chosen_angle ?? 0] ?? c.angles?.[0];
-    out.push("---", "", `## ${i + 1}. ${a?.ko ?? c.topic}`, "");
-    if (a?.en) out.push(`**영문 제목** ${a.en}`, "");
+  entries.forEach(({ card: c, selection: a }, i) => {
+    out.push("---", "", `## ${i + 1}. ${a.title}`, "");
+    out.push(`**글감 ID** ${c.id}`, "");
+    out.push(`**선택안** ${a.choice + 1}안`, "");
+    if (a.title_en) out.push(`**영문 제목** ${a.title_en}`, "");
     out.push(`**분류** ${c.area} · ${c.type} · 가치 ${c.worth}`);
     out.push(`**점수 분해** 순위 ${c.worth_parts?.rank ?? 0} · 질문 ${c.worth_parts?.question ?? 0} · 한국 ${c.worth_parts?.korea ?? 0} · 가산 ${c.worth_parts?.bonus ?? 0}`);
     out.push(`**출처** r/${c.sub} #${c.rank} — ${c.url}`, "");
-    if (a?.guide) out.push("### 작성 가이드", a.guide, "");
+    if (a.guide) out.push("### 작성 가이드", a.guide, "");
     if (c.gap) out.push("### 왜 이 소재인가", c.gap, "");
     out.push("### 원글 요약", c.summary_ko, "");
 
@@ -54,12 +60,12 @@ export async function GET(request: Request) {
     out.push("### 내 메모", c.note || "(없음)", "");
   });
 
-  if (!cards.length) out.push("확정한 글감이 없습니다.");
+  if (!entries.length) out.push("확정한 글감이 없습니다.");
 
   return new NextResponse(out.join("\n"), {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="glgam-${new Date().toISOString().slice(0, 10)}.md"`,
+      "Content-Disposition": `attachment; filename="glgam-${id ? `${id.slice(0, 8)}-${selectedChoice}` : new Date().toISOString().slice(0, 10)}.md"`,
     },
   });
 }

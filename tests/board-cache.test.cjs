@@ -66,21 +66,25 @@ for (const [route, dependency, method] of routes) {
   });
 }
 
-test('card edits expire only their run; notes/angles leave counts and collection caches intact', async () => {
+test('saving and removing a choice refresh counts; notes refresh only their card run', async () => {
   const events = [];
   const actions = loadTs('app/board/actions.ts', {
-    '@/lib/db': { pool: { query: async () => { events.push('write'); return { rows: [{ run_id: '25' }] }; } } },
+    '@/lib/db': { pool: { query: async sql => {
+      events.push(sql.includes('join runs r') ? 'read-owned-card' : 'write');
+      return { rows: sql.includes('join runs r') ? [{ run_id: '25', angles: [{ ko: 'First' }, { ko: 'Second' }] }] : [] };
+    } } },
+    '@/lib/workspace': { currentWorkspace: async () => ({ id: 'workspace-1' }) },
     '@/lib/board-cache': { cardCacheTag: id => `board-cards:${id}`, countCacheTag: id => `board-counts:${id}` },
     'next/cache': {
       updateTag: tag => events.push(tag), refresh: () => events.push('refresh'),
     },
   });
-  for (const action of ['toggleConfirm', 'chooseAngle', 'saveNote']) {
+  for (const action of ['saveChoice', 'removeChoice', 'saveNote']) {
     events.length = 0;
-    await actions[action](new Map([['id', '1'], ['idx', '0'], ['note', 'memo']]));
-    assert.deepEqual(events, action === 'toggleConfirm'
-      ? ['write', 'board-cards:25', 'board-counts:25', 'refresh']
-      : ['write', 'board-cards:25', 'refresh']);
+    await actions[action](new Map([['id', '1'], ['choice', '0'], ['note', 'memo']]));
+    assert.deepEqual(events, action === 'saveNote'
+      ? ['read-owned-card', 'write', 'board-cards:25', 'refresh']
+      : ['read-owned-card', 'write', 'write', 'board-cards:25', 'board-counts:25', 'refresh']);
   }
 });
 

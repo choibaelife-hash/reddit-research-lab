@@ -7,6 +7,7 @@ export const SUB_ORDER = ["KoreanBeauty", "AsianBeauty", "SkincareAddiction", "3
 export const BOARD_PAGE_SIZE = 30;
 
 export type Angle = { ko: string; en: string; guide: string };
+export type SavedChoice = { choice: number; title: string; title_en: string | null; guide: string | null };
 export type WorthParts = {
   rank: number; question: number; korea: number;
   comments: number; spread: number; magazine: number;
@@ -19,6 +20,7 @@ export type Card = {
   summary_ko: string; worth: number; worth_parts: WorthParts;
   gap: string | null; angles: Angle[]; detail: Record<string, any>;
   status: string; note: string | null; chosen_angle: number | null;
+  selections: SavedChoice[];
   comments: { rank: number; author: string | null; body: string; body_ko: string | null }[];
   keywords: string[];
   misconception: { has: boolean; what: string; correction: string } | null;
@@ -55,12 +57,16 @@ export async function getCards(
             m.raw->>'subreddit' as sub, (m.raw->>'rank')::int as rank,
             a.beauty_area as area, a.post_type as type, a.topic, a.summary_ko,
             a.worth, a.worth_parts, a.misconception,
-            c.gap, c.angles, c.detail, c.status, c.note, c.chosen_angle
+            c.gap, c.angles, c.detail, c.status, c.note, c.chosen_angle,
+            coalesce((select jsonb_agg(jsonb_build_object(
+              'choice', s.choice, 'title', s.title, 'title_en', s.title_en, 'guide', s.guide)
+              order by s.choice) from idea_selections s where s.mention_id = c.mention_id), '[]'::jsonb) as selections
        from idea_cards c
        join mentions m on m.id = c.mention_id
        join post_analysis a on a.mention_id = c.mention_id
       where ($1::bigint is null or c.run_id = $1::bigint)
-        and (not $2::boolean or c.status = 'saved')
+        and (not $2::boolean or exists
+          (select 1 from idea_selections s where s.mention_id = c.mention_id))
       order by a.worth desc, m.raw->>'subreddit'`,
     [runId ?? null, savedOnly]
   )).rows;
@@ -235,8 +241,8 @@ export const getStats = async (runId?: string | null) =>
               where ($1::bigint is null or run_id = $1::bigint)) as posts,
             (select count(*)::int from idea_cards
               where ($1::bigint is null or run_id = $1::bigint)) as cards,
-            (select count(*)::int from idea_cards
-              where status = 'saved' and ($1::bigint is null or run_id = $1::bigint)) as saved,
+            (select count(*)::int from idea_selections s join idea_cards c on c.mention_id = s.mention_id
+              where ($1::bigint is null or c.run_id = $1::bigint)) as saved,
             (select count(*)::int from entities) as entities,
             (select count(distinct mention_id)::int from post_comments) as comments,
             (select round(avg(worth))::int from post_analysis

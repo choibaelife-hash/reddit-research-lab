@@ -322,7 +322,7 @@ async function IdeasTab({ runId }: { runId: string }) {
       <h2>쓸 소재 {cards.length}장</h2>
       <div className="insight">
         왼쪽은 <b>읽고 판단하는 칸</b>, 오른쪽 위 <b>English</b>로 원문 전환.
-        오른쪽은 <b>만들 것을 정하는 칸</b> — 후보 하나를 고르고 메모한 뒤 확정하면 <b>글감</b> 탭으로 갑니다.
+        오른쪽은 <b>만들 것을 정하는 칸</b> — 후보 1·2안을 각각 확정하거나 내 아이디어를 3안으로 저장할 수 있습니다.
         <br />제목 아래 회색 숫자는 <b>점수 분해</b>입니다 (기본: 순위·질문·한국 / 가산: 댓글·확산·매거진).
       </div>
       {cards.map((c) => <BoardCard key={c.id} card={c} />)}
@@ -537,38 +537,38 @@ async function MineTab({ areas }: any) {
 
 async function DraftTab({ runId, week }: { runId: string; week?: string }) {
   const cards = await getBoardCards(runId, "draft");
+  const entries = cards.flatMap((card) => card.selections.map((selection) => ({ card, selection })));
   return (
     <section className="block">
       <p className="eyebrow">확정</p>
-      <h2>글감 {cards.length}건</h2>
+      <h2>글감 {entries.length}건</h2>
       <div className="insight">
         <b>쓸 소재</b> 탭에서 확정한 것만 모입니다. 고른 제목·가이드·근거·키워드·댓글·메모가 함께 담겨서
-        아래 버튼으로 <b>마크다운 파일</b>로 받을 수 있어요.
+        각 글감의 버튼으로 해당 내용을 <b>마크다운 파일</b>로 받을 수 있어요.
       </div>
-      {cards.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="empty-state">
           아직 확정한 글감이 없습니다.<br />
           <b>쓸 소재</b> 탭에서 후보를 고르고 “글감으로 확정”을 눌러 주세요.
         </div>
       ) : (
         <>
-          <p><a className="dl" href={`/board/export?week=${encodeURIComponent(week ?? "")}`}>마크다운 파일로 내려받기</a></p>
-          {cards.map((c) => {
-            const a = c.angles?.[c.chosen_angle ?? 0] ?? c.angles?.[0];
+          {entries.map(({ card: c, selection: a }) => {
             return (
-              <article className="card done" key={c.id}>
+              <article className="card done" key={`${c.id}-${a.choice}`}>
                 <header className="chead">
                   <div className="cmeta">
                     <span className="badge">{c.sub} #{c.rank}</span>
                     <span className="badge soft">{c.area}</span>
+                    <span className="badge soft">{a.choice + 1}안</span>
                     <span className="worth">가치 {c.worth}</span>
                   </div>
-                  <h3>{a?.ko ?? c.topic}</h3>
-                  <p className="orig-link"><em>{a?.en}</em></p>
+                  <h3>{a.title}</h3>
+                  {a.title_en && <p className="orig-link"><em>{a.title_en}</em></p>}
                 </header>
                 <div className="cgrid">
                   <div className="cleft">
-                    <p className="rl">작성 가이드</p><p className="gap">{a?.guide}</p>
+                    <p className="rl">작성 가이드</p><p className="gap">{a.guide || "(없음)"}</p>
                     {c.gap && (<><p className="rl">왜 이 소재인가</p><p className="gap">{c.gap}</p></>)}
                     <p className="rl">원글 요약</p><p className="summary">{c.summary_ko}</p>
                   </div>
@@ -583,6 +583,7 @@ async function DraftTab({ runId, week }: { runId: string; week?: string }) {
                     )}
                     <p className="rl">원문</p>
                     <p className="orig-link"><a href={c.url} target="_blank" rel="noopener noreferrer">{c.title} ↗</a></p>
+                    <a className="draft-download" href={`/board/export?week=${encodeURIComponent(week ?? "")}&id=${encodeURIComponent(c.id)}&choice=${a.choice}`}>이 글감 MD 내려받기</a>
                   </div>
                 </div>
               </article>

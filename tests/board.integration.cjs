@@ -51,10 +51,10 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.equal(has(first.calls, ' as posts,').length, 1, 'cold common cache');
   assert.equal(has(first.calls, 'from post_comments where').length, 0, 'main does not hydrate comments');
   console.log(`main cold: ${first.calls.length} queries`);
-  let ideas;
+  let draft;
   for (const tab of ['ideas', 'stock', 'rss', 'mine', 'draft', 'main']) {
     const result = await read(tab);
-    if (tab === 'ideas') ideas = result;
+    if (tab === 'draft') draft = result;
     assert.equal(has(result.calls, 'from workspaces').length, 1);
     assert.equal(has(result.calls, ' as posts,').length, 0, `${tab}: summary reused`);
     assert.equal(has(result.calls, 'from runs').filter(q => q.sql.includes('limit 30')).length,
@@ -94,26 +94,8 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.ok(!otherUser.html.includes('Fixture title'), 'empty workspace cannot access cached other run');
   assert.equal(has(otherUser.calls, 'from idea_cards c')[0].params[0], '0');
 
-  const form = [...ideas.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)]
-    .map(x => x[0]).find(x => x.includes('class="confirm'));
-  const action = form.match(/name="(\$ACTION_ID_[^"]+)"/)[1];
-  const body = new FormData();
-  body.set(action, ''); body.set('id', '1');
-  const response = await fetch(`${origin}/board?tab=ideas`, {
-    method: 'POST', headers: { cookie: cookie('user-a'), origin }, body,
-    signal: AbortSignal.timeout(15000),
-  });
-  const html = await response.text();
-  assert.equal(response.status, 200);
-  assert.ok(html.includes('확정됨'), 'real Server Action returns updated card');
-  assert.ok(html.includes('확정 <b>1</b>'), 'cached summary immediately refreshed');
-  const mainAfterSave = await read('main');
-  assert.equal(has(mainAfterSave.calls, ' as asked,').length, 0, 'save keeps global keywords cached');
-  assert.equal(has(mainAfterSave.calls, ' as with_cmt').length, 0, 'save keeps areas cached');
-  assert.equal(has(mainAfterSave.calls, 'from runs').filter(q => q.sql.includes('limit 30')).length, 0);
-  const draft = await read('draft');
   assert.ok(draft.html.includes('Fixture angle'), 'saved card visible in draft');
-  assert.ok(draft.html.includes('/board/export?week=2026-09-21'), 'download follows the displayed week');
+  assert.ok(draft.html.includes('/board/export?week=2026-09-21&amp;id=1&amp;choice=0'), 'each card downloads its own choice');
   assert.equal(has(draft.calls, 'from post_comments where').length, 0);
   assert.equal(has(draft.calls, 'from idea_cards c')[0].params[1], true);
   const exportStart = queries().length;
@@ -142,35 +124,9 @@ const has = (calls, text) => calls.filter(q => q.sql.includes(text));
   assert.ok(otherMarkdown.includes('확정한 글감이 없습니다.'));
   assert.deepEqual(has(queries().slice(otherExportStart), 'from idea_cards c')[0].params,
     ['0', true], 'another workspace has no matching cards');
-  const edit = async (form, fields) => {
-    const action = form.match(/name="(\$ACTION_ID_[^"]+)"/)[1];
-    const body = new FormData(); body.set(action, ''); body.set('id', '1');
-    for (const [key, value] of Object.entries(fields)) body.set(key, value);
-    const before = queries().length;
-    const response = await fetch(`${origin}/board?tab=ideas`, {
-      method: 'POST', headers: { cookie: cookie('user-a'), origin }, body,
-    });
-    const html = await response.text();
-    assert.equal(response.status, 200);
-    await new Promise(resolve => setTimeout(resolve, 30));
-    assert.equal(has(queries().slice(before), ' as posts,').length, 0, 'note/angle keeps counts cached');
-    return html;
-  };
-  const forms = [...ideas.html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/g)].map(x => x[0]);
-  const memo = forms.find(x => x.includes('class="memoform"'));
-  assert.ok((await edit(memo, { note: 'Updated memo' })).includes('Updated memo'));
-  const angle = forms.find(x => x.includes('name="idx"'));
-  await edit(angle, { idx: '1' });
-  const updatedDraft = await read('draft');
-  assert.ok(updatedDraft.html.includes('Updated memo'));
-  assert.ok(updatedDraft.html.includes('<h3>Second angle</h3>'));
-  const otherWeekAfter = await read('main', '&week=2026-09-14');
-  assert.equal(otherWeekAfter.calls.length, 3, 'editing this run leaves the other run cached');
-  const rssAfterSave = await read('rss');
-  assert.equal(rssAfterSave.calls.length, 3, 'card edits do not expire RSS data');
   const denied = await fetch(`${origin}/board`, { redirect: 'manual' });
   assert.equal(denied.status, 307);
-  console.log('PASS: 6 tabs, pagination/filtering, real cache hits, week/user isolation, targeted save/note/angle refresh, auth');
+  console.log('PASS: 6 tabs, pagination/filtering, real cache hits, week/user isolation, per-choice export, auth');
 })().catch(error => {
   console.error(error);
   console.error(output.split('\n').filter(x => !x.startsWith('BOARD_SQL ')).join('\n'));

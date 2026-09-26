@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Card } from "@/lib/board-data";
-import { toggleConfirm, chooseAngle, saveNote } from "@/app/board/actions";
+import { saveChoice, removeChoice, saveNote } from "@/app/board/actions";
 
-// 클라이언트가 필요한 건 두 가지뿐이다: 한국어/영어 전환, 메모 입력.
-// 확정·후보 선택은 form + Server Action이라 자바스크립트 없이도 동작한다.
+// 후보별 선택, 우클릭 메뉴, 3안 입력과 언어 전환은 이 카드 안에서 처리한다.
 
 function stripSig(b: string | null) {
   return (b ?? "").replace(/submitted by[\s\S]*$/, "").trim();
@@ -23,10 +22,21 @@ const DETAIL_TEXT: [string, string][] = [
 export function BoardCard({ card }: { card: Card }) {
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const [note, setNote] = useState(card.note ?? "");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [menu, setMenu] = useState<number | null>(null);
+  const [ideaOpen, setIdeaOpen] = useState(false);
   const saved = card.status === "saved";
   const body = stripSig(card.body);
-  const chosen = card.chosen_angle ?? 0;
+  const ownIdea = card.selections.find((s) => s.choice === 2);
   const p = card.worth_parts;
+
+  useEffect(() => {
+    const closeOtherIdea = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== card.id) setIdeaOpen(false);
+    };
+    window.addEventListener("board-idea-open", closeOtherIdea);
+    return () => window.removeEventListener("board-idea-open", closeOtherIdea);
+  }, [card.id]);
 
   const detail: [string, string][] = [];
   for (const [k, key, j] of DETAIL_ROWS) {
@@ -46,6 +56,11 @@ export function BoardCard({ card }: { card: Card }) {
           <span className="badge soft">{card.area}</span>
           <span className="badge soft">{card.type}</span>
           <span className="worth">가치 {card.worth}</span>
+          <button type="button" className="idea-trigger" aria-expanded={ideaOpen} aria-controls={`idea-note-${card.id}`}
+            onClick={() => {
+              if (!ideaOpen) window.dispatchEvent(new CustomEvent("board-idea-open", { detail: card.id }));
+              setIdeaOpen(!ideaOpen);
+            }}>＋ 내 아이디어</button>
         </div>
         <h3>{card.topic}</h3>
         {p && (
@@ -126,31 +141,47 @@ export function BoardCard({ card }: { card: Card }) {
         </div>
 
         <div className="cright">
-          <p className="rl" style={{ marginTop: 0 }}>발행할 콘텐츠 후보 <span className="sub2">— 하나 고르세요</span></p>
+          <p className="rl" style={{ marginTop: 0 }}>발행할 콘텐츠 후보 <span className="sub2">— 각각 확정할 수 있어요</span></p>
           <div className="angles">
             {card.angles?.map((a, i) => (
-              <form action={chooseAngle} key={i}>
-                <input type="hidden" name="id" value={card.id} />
-                <input type="hidden" name="idx" value={i} />
-                <button type="submit" className={`angle${i === chosen ? " on" : ""}`}>
+              <div className="angle-wrap" key={i}>
+                <button type="button" className={`angle${i === selected ? " on" : ""}${card.selections.some((s) => s.choice === i) ? " saved" : ""}`}
+                  aria-pressed={i === selected}
+                  onClick={() => { setSelected(i); setMenu(null); }}
+                  onContextMenu={(event) => { event.preventDefault(); setSelected(i); setMenu(i); }}>
                   <span className="dot" aria-hidden="true" />
                   <span className="abody">
                     <span className="ako">{a.ko}</span>
                     <span className="aen">{a.en}</span>
                     <span className="ag">{a.guide}</span>
+                    {card.selections.some((s) => s.choice === i) && <span className="saved-label">확정됨</span>}
                   </span>
                 </button>
-              </form>
+                {menu === i && <form action={async (data) => { await saveChoice(data); setSelected(null); setMenu(null); }} className="angle-menu">
+                  <input type="hidden" name="id" value={card.id} />
+                  <input type="hidden" name="choice" value={i} />
+                  <button type="submit">이 후보 확정</button>
+                </form>}
+              </div>
             ))}
           </div>
 
           <div className="cart">
-            <form action={toggleConfirm}>
+            <form action={async (data) => { await saveChoice(data); setSelected(null); setMenu(null); }}>
               <input type="hidden" name="id" value={card.id} />
-              <button type="submit" className={`confirm${saved ? " on" : ""}`}>
-                {saved ? "확정됨 — 해제하려면 누르세요" : "글감으로 확정"}
+              <input type="hidden" name="choice" value={selected ?? ""} />
+              <button type="submit" className="confirm" disabled={selected === null}>
+                {selected === null ? "확정할 후보를 선택하세요" : `${selected + 1}안 글감으로 확정`}
               </button>
             </form>
+            {card.selections.length > 0 && <div className="saved-list">
+              {card.selections.map((s) => <form action={removeChoice} key={s.choice}>
+                <input type="hidden" name="id" value={card.id} />
+                <input type="hidden" name="choice" value={s.choice} />
+                <span>{s.choice + 1}안 확정됨</span>
+                <button type="submit" aria-label={`${s.choice + 1}안 확정 해제`}>해제</button>
+              </form>)}
+            </div>}
             <form action={saveNote} className="memoform">
               <input type="hidden" name="id" value={card.id} />
               <textarea
@@ -163,6 +194,19 @@ export function BoardCard({ card }: { card: Card }) {
           </div>
         </div>
       </div>
+      {ideaOpen && <aside className="idea-sticky" id={`idea-note-${card.id}`} role="region" aria-labelledby={`idea-title-${card.id}`}
+        onKeyDown={(event) => { if (event.key === "Escape") setIdeaOpen(false); }}>
+        <div className="idea-sticky-head"><h3 id={`idea-title-${card.id}`}>3안 · 내 아이디어</h3><button type="button" onClick={() => setIdeaOpen(false)} aria-label="메모 닫기">×</button></div>
+        <p className="idea-sticky-source">{card.topic}</p>
+        <p className="note">추천 1·2안과 별도로 글감에 저장됩니다.</p>
+        <form action={async (data) => { await saveChoice(data); setIdeaOpen(false); setSelected(null); }}>
+          <input type="hidden" name="id" value={card.id} />
+          <input type="hidden" name="choice" value="2" />
+          <label>제목<input name="title" required autoFocus maxLength={200} defaultValue={ownIdea?.title ?? ""} placeholder="내가 쓰고 싶은 콘텐츠 제목" /></label>
+          <label>내용·작성 방향<textarea name="guide" rows={5} maxLength={5000} defaultValue={ownIdea?.guide ?? ""} placeholder="핵심 의견과 다룰 내용을 적어 주세요" /></label>
+          <button type="submit" className="confirm">3안 글감으로 확정</button>
+        </form>
+      </aside>}
     </article>
   );
 }

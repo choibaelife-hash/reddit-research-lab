@@ -46,7 +46,7 @@ test('draft filters saved cards in SQL and never queries comments', async () => 
   const { data, calls } = fixture([{ id: '1' }]);
   const cards = await data.getCards('25', { savedOnly: true, includeComments: false });
   assert.equal(calls.length, 2);
-  assert.match(calls[0].sql, /c\.status = 'saved'/);
+  assert.match(calls[0].sql, /exists\s+\(select 1 from idea_selections s/);
   assert.equal(calls[0].params[1], true);
   assert.ok(calls.every(c => !/from post_comments\s+where/.test(c.sql)));
   assert.deepEqual(cards[0].comments, []);
@@ -64,7 +64,7 @@ test('summary has one narrow query without comments, body, or detailed evidence'
 test('stats includes saved count so navigation does not need to load cards', async () => {
   const { data, calls } = fixture([{ cards: 12, saved: 2 }]);
   assert.equal((await data.getStats('25')).saved, 2);
-  assert.match(calls[0].sql, /status = 'saved'/);
+  assert.match(calls[0].sql, /from idea_selections s join idea_cards c/);
 });
 
 test('stock page filters in SQL and batches keywords for only its page', async () => {
