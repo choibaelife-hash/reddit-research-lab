@@ -19,6 +19,9 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 # 스키마 적용(npm run schema)에 필요하다. standalone 산출물에는 안 들어간다.
 COPY --from=builder /app/scripts ./scripts
+# Next 라우트 밖에서 실행하는 크론의 의존성은 standalone에 자동 포함되지 않는다.
+COPY --from=builder /app/lib/cron/due.mjs ./lib/cron/due.mjs
+RUN node --input-type=module -e "await import('./lib/cron/due.mjs')"
 COPY --from=builder /app/schema.sql /app/schema-saas.sql ./
 
 EXPOSE 3000
